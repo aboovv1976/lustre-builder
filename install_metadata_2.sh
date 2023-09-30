@@ -114,7 +114,7 @@ function disable_firewall {
 #############
 
 setenforce 0
-mgs_fqdn_hostname_nic1=mgs-server-vnic-1.$1
+mgs_fqdn_hostname_nic1=$1
 uname -a
 
 
@@ -124,22 +124,18 @@ modprobe lnet
 lnetctl lnet configure
 lctl list_nids
 
-# call function
-configure_vnics
-
 # Secondary VNIC details
 privateIp=`curl -s http://169.254.169.254/opc/v1/vnics/ | jq '.[1].privateIp ' | sed 's/"//g' ` ;
+[[ -n "$privateIp" ]] && configure_vnics
+[[ -z "$privateIP" ]] && privateIp=`curl -s http://169.254.169.254/opc/v1/vnics/ | jq '.[0].privateIp ' | sed 's/"//g' ` ;
 interface=`ip addr |egrep "inet $privateIp|BROADCAST" | grep -B 1 "inet $privateIp" | grep BROADCAST | cut -f2 -d:`
-
 
 # Configure lnet network
 lnetctl net add --net tcp1 --if $interface  –peer-timeout 180 –peer-credits 128 –credits 1024
 
-
 num=`hostname | gawk -F"." '{ print $1 }' | gawk -F"-"  'NF>1&&$0=$(NF)'`
 hostname
 echo $num
-
 
 disk_type=""
 drive_variables=""
@@ -155,13 +151,10 @@ for disk in `ls /dev/ | grep nvme | grep n1`; do
   index=$((((((num-1))*total_disk_count))+(dcount)))
   echo $index
   dcount=$((dcount+1))
-    disk_mount
-
+  disk_mount
 done;
 
 echo "$dcount $disk_type disk found"
-
-
 
 disk_type=""
 drive_variables=""
@@ -174,13 +167,12 @@ for disk in `cat /proc/partitions | grep -ivw 'sda' | grep -ivw 'sda[1-3]' | gre
   disk_type="bv"
   pvcreate -y  /dev/$disk
   mount_device="/dev/$disk"
-
   index=$((((((num-1))*total_disk_count))+(dcount)))
   echo $index
   drive_letter=`echo $disk | sed 's/sd//'`
   drive_variables="${drive_variables}${drive_letter}"
   dcount=$((dcount+1))
-    disk_mount
+  disk_mount
 done;
 
 echo "$dcount $disk_type disk found"
@@ -195,8 +187,6 @@ df -h
 
 # function call
 enable_lnet_at_boot_time
-
-
 echo "setup complete"
 exit 0;
 
