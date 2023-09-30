@@ -58,47 +58,37 @@ function enable_lnet_at_boot_time {
 # function
 function disk_mount {
 
-if [ $disk_type = "nvme" ]; then
-  fsname=lfsnvme
-#  mount_point="/mnt/mgt_$disk_type"
-else
-  fsname=lfsbv
-#  mount_point="/mnt/mgt_$disk_type"
-fi
-mount_point="/mnt/mgs${num}_mgt${index}_${disk_type}"
-
-
+  if [ $disk_type = "nvme" ]; then
+    fsname=lfsnvme
+  else
+    fsname=lfsbv
+  fi
+  mount_point="/mnt/mgs${num}_mgt${index}_${disk_type}"
 
   # Add logic to ensure the below is not empty
+  cmd=`nslookup ${mgs_fqdn_hostname_nic1} | grep -qi "Name:"`
+  while [ $? -ne 0 ];
+  do
+    echo "Waiting for nslookup..."
+    sleep 10s
     cmd=`nslookup ${mgs_fqdn_hostname_nic1} | grep -qi "Name:"`
-    while [ $? -ne 0 ];
-    do
-      echo "Waiting for nslookup..."
-      sleep 10s
-      cmd=`nslookup ${mgs_fqdn_hostname_nic1} | grep -qi "Name:"`
-    done
+  done
 
+  mgs_ip=`nslookup ${mgs_fqdn_hostname_nic1} | grep "Address: " | gawk '{ print $2 }'` ; echo $mgs_ip
+  if [ -z $mgs_ip ]; then
+    exit 1;
+  fi
 
+  mgs_pri_nid=$mgs_ip@tcp1 ;  echo $mgs_pri_nid
+  mkfs.lustre --fsname=$fsname --mgs $mount_device
 
+  lctl network up
+  lctl list_nids
+  mkdir -p $mount_point
+  mount -t lustre $mount_device $mount_point
 
-mgs_ip=`nslookup ${mgs_fqdn_hostname_nic1} | grep "Address: " | gawk '{ print $2 }'` ; echo $mgs_ip
-if [ -z $mgs_ip ]; then
-  exit 1;
-fi
-
-
-mgs_pri_nid=$mgs_ip@tcp1 ;  echo $mgs_pri_nid
-mkfs.lustre --fsname=$fsname --mgs $mount_device
-
-
-lctl network up
-lctl list_nids
-mkdir -p $mount_point
-mount -t lustre $mount_device $mount_point
-
-## Update fstab
-echo "$mount_device               $mount_point           lustre  defaults,_netdev        0 0" >> /etc/fstab
-
+  ## Update fstab
+  echo "$mount_device               $mount_point           lustre  defaults,_netdev        0 0" >> /etc/fstab
 }
 
 ##############
@@ -106,7 +96,7 @@ echo "$mount_device               $mount_point           lustre  defaults,_netde
 #############
 
 setenforce 0
-mgs_fqdn_hostname_nic1=mgs-server-vnic-1.$1
+mgs_fqdn_hostname_nic1=$1
 uname -a
 
 getenforce
@@ -114,13 +104,11 @@ modprobe lnet
 lnetctl lnet configure
 lctl list_nids
 
-# call function
-configure_vnics
-
 # Secondary VNIC details
 privateIp=`curl -s http://169.254.169.254/opc/v1/vnics/ | jq '.[1].privateIp ' | sed 's/"//g' ` ;
+[[ -n "$privateIp" ]] && configure_vnics
+[[ -z "$privateIP" ]] && privateIp=`curl -s http://169.254.169.254/opc/v1/vnics/ | jq '.[0].privateIp ' | sed 's/"//g' ` ;
 interface=`ip addr |egrep "inet $privateIp|BROADCAST" | grep -B 1 "inet $privateIp" | grep BROADCAST | cut -f2 -d:`
-
 
 # Configure lnet network
 lnetctl net add --net tcp1 --if $interface  –peer-timeout 180 –peer-credits 128 –credits 1024
@@ -129,7 +117,6 @@ lnetctl net add --net tcp1 --if $interface  –peer-timeout 180 –peer-credits 
 num=`hostname | gawk -F"." '{ print $1 }' | gawk -F"-"  'NF>1&&$0=$(NF)'`
 hostname
 echo $num
-
 
 disk_type=""
 drive_variables=""
@@ -145,13 +132,10 @@ for disk in `ls /dev/ | grep nvme | grep n1`; do
   index=$((((((num-1))*total_disk_count))+(dcount)))
   echo $index
   dcount=$((dcount+1))
-    disk_mount
-
+  disk_mount 
 done;
 
 echo "$dcount $disk_type disk found"
-
-
 
 disk_type=""
 drive_variables=""
@@ -170,11 +154,10 @@ for disk in `cat /proc/partitions | grep -ivw 'sda' | grep -ivw 'sda[1-3]' | gre
   drive_letter=`echo $disk | sed 's/sd//'`
   drive_variables="${drive_variables}${drive_letter}"
   dcount=$((dcount+1))
-    disk_mount
+  disk_mount
 done;
 
 echo "$dcount $disk_type disk found"
-
 
 service lustre status
 lctl list_nids
@@ -185,7 +168,6 @@ df -h
 
 # function call
 enable_lnet_at_boot_time
-
 
 echo "setup complete"
 exit 0;

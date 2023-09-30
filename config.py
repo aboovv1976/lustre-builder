@@ -125,7 +125,7 @@ def getConfig():
 
     basicConfig["vcn"]=vcn
     r=vnicClient.get_vcn(vcn).data
-    basicConfig["dns"]=r.dns_label + ".oraclevcn.com"
+    basicConfig["domain"]=r.dns_label + ".oraclevcn.com"
 
     r=oci.pagination.list_call_get_all_results(
             vnicClient.list_subnets,
@@ -161,8 +161,8 @@ def getConfig():
         print(f"Storage subnet not found in vcn id {vcn}")
         error=True
     if not data:
-        print(f"Data subnet not found in vcn id {vcn}")
-        error=True
+        data = storage
+        
     basicConfig["publicNet"]=public
     basicConfig["storageNet"]=storage
     basicConfig["dataNet"]=data
@@ -214,6 +214,9 @@ def getConfig():
         idx=t["idx"]
 
         details["fqdn"]=name + "." + DeploymentConfig["basicConfig"]["storageNet"]["domain"]
+        details["domain"]=DeploymentConfig["basicConfig"]["storageNet"]["domain"]
+        details["dataDomain"]=DeploymentConfig["basicConfig"]["dataNet"]["domain"]
+        details["vcnDomain"]=DeploymentConfig["basicConfig"]["domain"]
         details["idx"]=idx
         details["status"]=status
         details["shape"]=i.shape
@@ -231,8 +234,14 @@ def getConfig():
         cc=0
         for x in r.data:
             if x.lifecycle_state == "ATTACHED":
+                if x.subnet_id == DeploymentConfig["basicConfig"]["dataNet"]["id"]:
+                    details["name_a"]=x.display_name
+                    details["fqdn_a"]=details["name_a"] + "." + DeploymentConfig["basicConfig"]["dataNet"]["domain"]
                 cc+=1
         details["vnics"]=cc
+        if "name_a" not in details:
+            details["name_a"]=name
+            details["fqdn_a"]=details["fqdn"]
 
         r=oci.pagination.list_call_get_all_results(
                 instanceClient.list_volume_attachments,
@@ -587,7 +596,7 @@ def configureLustre(n):
             print(f"Configuring iSCSI devices on node {n['name']} failed")
             return
 
-        if not runScript(n,"update_resolv_conf.sh"):
+        if not runScript(n,f"update_resolv_conf.sh {n['vcnDomain']} {n['domain']} {n['dataDomain']}"):
             print(f"Updating resolv.conf failed on node {n['name']}")
             return
             
@@ -598,13 +607,13 @@ def configureLustre(n):
 
         t=t["type"]
         if t == "MDS":
-            script="install_metadata_2.sh"
+            script="install_metadata_2.sh "
         if t == "OSS":
-            script="install_storage_2.sh"
+            script="install_storage_2.sh "
         if t == "MGS":
-            script="install_management_2.sh"
+            script="install_management_2.sh "
 
-        if not runScript(n,script):
+        if not runScript(n,script + n["fqdn_a"]):
             return
 
         setReady(n)
