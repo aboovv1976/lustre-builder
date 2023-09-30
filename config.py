@@ -530,6 +530,9 @@ def configureNode(n,template):
     if n["type"] == "OSS":
         nicName=f"{OSSHostPattern}vnic-{n['idx']}"
         bvName=f"{OSSHostPattern}{n['idx']}-OST-"
+    if n["type"] == "CLIENT":
+        nicName=f"{ClientHostPattern}vnic-{n['idx']}"
+        bvName=f"{ClientHostPattern}{n['idx']}-CLT-"
 
     if n["vnics"] < vnics:
         print("Creating and attaching vnic ...")
@@ -643,8 +646,8 @@ def configureLustre(n):
     setReady(n)
     return True
 
-
 #Main start here
+
 
 initOCI()
    
