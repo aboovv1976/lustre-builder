@@ -36,7 +36,7 @@ CLUSTER = {
                 "shape": "VM.Standard2.2",
                 "nic": 0,
                 "vnics": 2,
-                "bvs": 1,
+                "volumes": 1,
                 "bvSize": 50
             }
         ]
@@ -210,8 +210,8 @@ def getConfig():
         if t == None:
 #            print("Skipping instance not current name pattern " + name)
             continue
-        t=t["type"]
         idx=t["idx"]
+        t=t["type"]
 
         details["fqdn"]=name + "." + DeploymentConfig["basicConfig"]["storageNet"]["domain"]
         details["domain"]=DeploymentConfig["basicConfig"]["storageNet"]["domain"]
@@ -262,7 +262,7 @@ def getConfig():
         details["cmds"]=cmds
 
         DeploymentConfig["clusters"][cluster]["nodes"].append(details)
-    print(json.dumps(DeploymentConfig))
+    print(json.dumps(DeploymentConfig,indent=4))
     return error
 
 def attachVnic(instanceId, displayName,subnetId, nicIndex):
@@ -385,11 +385,11 @@ def setReady(n):
 def setConfigured(n):
     instanceClient = oci.core.ComputeClient(OCIConfig)
     tag={
-            "lustre-node-status": "Imaged"
+            "lustre-node-status": "Configured"
             }
     updateTag(n["id"],tag)
 
-def createInstance(clusterName, nodeType, shape, instanceName=None):
+def createInstance(clusterName, shape, instanceName=None):
 
     tags = {
             "lustre-node-status": "Created",
@@ -478,22 +478,20 @@ def getKernel(n):
     else:
         return "Unknown"
 
-def checkSsh(n,timeout=30):
+def checkSsh(n,timeout=10):
     host=n["fqdn"]
     t=0
-    while t <= 600:
+    while t <= 10:
         print("Checking ssh access to " + n["name"])
         r=runRemoteCmd(host,"echo test",timeout=timeout)
         if r["status"] == 0: 
-            time.slee(30)
             print("ssh is available to node " + n["name"])
             return True
         else:
-            time.sleep(5)
+            time.sleep(30)
             t+=10
             continue
-    if t >= 600 :
-        return False
+    return False
 
 def iSCSIConfig(n):
     host=n["fqdn"]
@@ -507,10 +505,10 @@ def iSCSIConfig(n):
 def configureNode(n,template):
 
     if getNodeStatus(n) == "Created":
-        print(f"Configuring node {n['name']} with additional VNIC and volumes")
-        vols=template["bvs"]
+        print(f"Configuring node {n['name']} with additional {template['vnics']-n['vnics']} VNIC and {template['volumes']-n['volumes']} volumes")
+        vols=template["volumes"]
         nicIndex=template["nic"]
-        vnics=template["bnics"]
+        vnics=template["vnics"]
 
         if n["type"] == "MGS":
             nicName=f"{MGSHostPattern}vnic-{n['idx']}"
@@ -523,7 +521,7 @@ def configureNode(n,template):
             bvName=f"{OSSHostPattern}{n['idx']}-OST-"
 
         if n["vnics"] < vnics:
-            print("Creating vnic ...")
+            print("Creating and attaching vnic ...")
             attachVnic(n["id"], nicName, DeploymentConfig["basicConfig"]["dataNet"]["id"], nicIndex)
         if n["volumes"] < vols:
             for i in range(n["volumes"]+1,vols+1):
