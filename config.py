@@ -262,6 +262,7 @@ def getConfig():
         details["cmds"]=cmds
 
         DeploymentConfig["clusters"][cluster]["nodes"].append(details)
+    print(json.dumps(DeploymentConfig))
     return error
 
 def attachVnic(instanceId, displayName,subnetId, nicIndex):
@@ -626,10 +627,11 @@ def configureLustre(n):
 initOCI()
    
 for cn in CLUSTER["nodes"]:
-    if not createInstance(CLUSTER["name"], cn["shape"], cn["name"]):
-        print(f"Creating instance {cn['name']} failed")
     getConfig()
+    if not createInstance(CLUSTER["name"], cn["shape"], cn["name"]):
+        print(f"Create instance {cn['name']} failed")
     found=False
+    getConfig()
     for n in DeploymentConfig["clusters"][CLUSTER["name"]]["nodes"]:
         if cn["name"] == n["name"]:
             configureNode(n,cn)
