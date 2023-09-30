@@ -10,6 +10,7 @@ import time
 import threading
 import signal
 import json
+import os
 
 PublicNetTag="public"
 StorageNetTag="storage"
@@ -26,8 +27,6 @@ ServerLustreVersion="lustre-2.15.3-1.el8.x86_64"
 
 #STS = [ "storage-server-19", "storage-server-26", "storage-server-23", "storage-server-24", "storage-server-21", "storage-server-20", "storage-server-25", "storage-server-22", "storage-server-7", "storage-server-4", "storage-server-17", "storage-server-10", "storage-server-8", "storage-server-16", "storage-server-1", "storage-server-9", "storage-server-15", "storage-server-12" ]
 
-OSS = [ "storage-server-19" ]
-
 CLUSTER = {
         "name": "xai-phx-1",
 #        "nodes": [ "mgs-server-1", "metadata-server-1", "storage-server-1" ]
@@ -35,12 +34,14 @@ CLUSTER = {
             { 
                 "name": "mgs-server-1",
                 "shape": "VM.Standard2.2",
-                "nics": 1,
+                "nic": 0,
                 "vnics": 2,
-                "bv": 1,
+                "bvs": 1,
                 "bvSize": 50
             }
         ]
+        
+}
 
 
 def runCmd(cmd,output=True,timeout=None):
@@ -80,24 +81,24 @@ def initOCI():
     OCIConfig = oci.config.from_file()
 
 def getNodeType(n):
-
-    if MGSHostPattern == n["name"][:len(MGSHostPattern)]:
+    name=n["name"]
+    if MGSHostPattern == name[:len(MGSHostPattern)]:
        idx=name[len(MGSHostPattern):]
        if not idx.isnumeric():
-           return "Unknown"
-        return "MGS"
-    if OSSHostPattern == n["name"][:len(OSSHostPattern)]:
+           return None
+       return { "type": "MGS", "idx": int(idx) }
+    if OSSHostPattern == name[:len(OSSHostPattern)]:
        idx=name[len(OSSHostPattern):]
        if not idx.isnumeric():
-           return "Unknown"
-        return "OSS"
-    if MDSHostPattern == n["name"][:len(MDSHostPattern)]:
+           return None
+       return { "type": "OSS", "idx": int(idx) }
+    if MDSHostPattern == name[:len(MDSHostPattern)]:
        idx=name[len(MDSHostPattern):]
        if not idx.isnumeric():
-           return "Unknown"
-        return "MDS"
-    elif:
-        return "Unknown"
+           return None
+       return { "type": "MDS", "idx": int(idx) }
+    else:
+        return None
 
 def getConfig():
     error=False
@@ -206,9 +207,11 @@ def getConfig():
 
         details["name"]=name
         t=getNodeType(details)
-        if t == "Unknown":
+        if t == None:
 #            print("Skipping instance not current name pattern " + name)
             continue
+        t=t["type"]
+        idx=t["idx"]
 
         details["fqdn"]=name + "." + DeploymentConfig["basicConfig"]["storageNet"]["domain"]
         details["idx"]=idx
@@ -382,32 +385,7 @@ def createInstance(clusterName, nodeType, shape, instanceName=None):
             "lustre-node-status": "Created",
             "lustre-cluster-name": clusterName
     }
-
-    if instanceName == None:
-        idx=0
-        if clusterName in DeploymentConfig["clusters"]:
-            for n in DeploymentConfig["clusters"][clusterName]["nodes"]:
-                if n["type"] == nodeType:
-                    if nodeType in [ "MGS", "MDS" ]:
-                        # Cluster already has MGS and MDS. No need to create new one
-                        continue
-                    if idx == 0:
-                        idx=n["idx"]
-                    elif n["idx"] > idx:
-                        idx=n["idx"]
-        idx+=1
-        if nodeType == "MGS":
-            name=MGSHostPattern + str(idx)
-        elif nodeType == "MDS":
-            name=MDSHostPattern + str(idx)
-        elif nodeType == "OSS":
-            name=OSSHostPattern + str(idx)
-        else:
-            print("Invalid host class " + nodeType)
-            return 
-    else:
-        name=instanceName
-
+    name=instanceName
     instanceClient = oci.core.ComputeClient(OCIConfig)
     r=oci.pagination.list_call_get_all_results(
         instanceClient.list_instances,
@@ -419,13 +397,13 @@ def createInstance(clusterName, nodeType, shape, instanceName=None):
     for i in r:
         if i.display_name == name:
             if i.lifecycle_state in [ "RUNNING", "STARTING" ]:
-                print("Found instance " + name)
+#                print("Found instance " + name)
                 found=True
                 r=i
                 break
             elif i.lifecycle_state not in [ "TERMINATING", "TERMINATED" ]:
                 print("Found instnace" + name + " in incorrect sate " + i.lifecycle_state )
-                return
+                return None
 
     if not found:
         print("Creating new instance " + name)
@@ -472,6 +450,7 @@ def createInstance(clusterName, nodeType, shape, instanceName=None):
         )
     print("Set instance " + name + " to Created")
     updateTag(r.id, tags)
+    return r
 
 def getLustre(n):
     host=n["fqdn"]
@@ -496,7 +475,7 @@ def checkSsh(n,timeout=30):
         print("Checking ssh access to " + n["name"])
         r=runRemoteCmd(host,"echo test",timeout=timeout)
         if r["status"] == 0: 
-            sleep 30
+            time.slee(30)
             print("ssh is available to node " + n["name"])
             return True
         else:
@@ -508,41 +487,42 @@ def checkSsh(n,timeout=30):
 
 def iSCSIConfig(n):
     host=n["fqdn"]
-    for c in n["cmds"]
+    for c in n["cmds"]:
         r=runRemoteCmd(host,c)
         if r["status"] != 0:
             print(f'Running command {c} failed on host {n["name"]}')
             return False
     return True
 
-def configureNode(n):
+def configureNode(n,template):
 
     if getNodeStatus(n) == "Created":
         print(f"Configuring node {n['name']} with additional VNIC and volumes")
-        vols=-1
+        vols=template["bvs"]
+        nicIndex=template["nic"]
+        vnics=template["bnics"]
+
         if n["type"] == "MGS":
             nicName=f"{MGSHostPattern}vnic-{n['idx']}"
             bvName=f"{MGSHostPattern}{n['idx']}-MGT-"
-            nicIndex=0
-            vols=MGTTotalVolumes
         if n["type"] == "MDS":
             nicName=f"{MDSHostPattern}vnic-{n['idx']}"
             bvName=f"{MDSHostPattern}{n['idx']}-MDT-"
-            nicIndex=1
-            vols=MDTTotalVolumes
         if n["type"] == "OSS":
             nicName=f"{OSSHostPattern}vnic-{n['idx']}"
             bvName=f"{OSSHostPattern}{n['idx']}-OST-"
-            vols=OSTTotalVolumes
-            nicIndex=1
-        if n["vnics"] < TotalVNIC:
+
+        if n["vnics"] < vnics:
             print("Creating vnic ...")
             attachVnic(n["id"], nicName, DeploymentConfig["basicConfig"]["dataNet"]["id"], nicIndex)
         if n["volumes"] < vols:
             for i in range(n["volumes"]+1,vols+1):
                 name=f"{bvName}{i}" 
                 print("Creating and attaching Block Volumes " + name)
-                createAndAttachBV(name,DeploymentConfig["basicConfig"]["availabilityDomain"], DeploymentConfig["basicConfig"]["compartmentId"], BVSize, n["id"])
+                createAndAttachBV(name,
+                DeploymentConfig["basicConfig"]["availabilityDomain"], 
+                DeploymentConfig["basicConfig"]["compartmentId"], 
+                template["bvSize"], n["id"])
         if checkSsh(n):
             setConfigured(n)
 
@@ -550,8 +530,8 @@ def reboot(n):
     print(f"Rebooting {n['fqdn']} ....")
     r=runCmd(f"sudo reboot")
 
-def runScript(n,script)
-    print(f"Running {script} on node {n['name']}"
+def runScript(n,script):
+    print(f"Running {script} on node {n['name']}")
     r=runCmd(f"cat {script} | ssh {n['fqdn']} 'cat > /tmp/{script}'")
     if r["status"] != 0 :
         print(f"Copying {script} to {n['fqdn']} failed")
@@ -594,7 +574,7 @@ def configureLustre(n):
     if ( v1 != ServerKernelVerson ):
         print(f"Node {n['name']} is not running currect kernel version")
         return
-    if ( v2 != ServerLustreVerson ):
+    if ( v2 != ServerLustreVersion ):
         print(f"Node {n['name']} is not running currect lustre version")
         return
 
@@ -610,16 +590,19 @@ def configureLustre(n):
         if not runScript(n,"update_resolv_conf.sh"):
             print(f"Updating resolv.conf failed on node {n['name']}")
             return
-
-        if getNodeType(n) == "MDS":
-            script=install_metadata_2.sh
-        if getNodeType(n) == "OSS":
-            script=install_storage_2.sh
-        if getNodeType(n) == "MGS":
-            script=install_management_2.sh
-        elif:
+            
+        t=getNodeType(n)
+        if t == None:
             print("Unknow node type {n['fqdn']}")
             return
+
+        t=t["type"]
+        if t == "MDS":
+            script="install_metadata_2.sh"
+        if t == "OSS":
+            script="install_storage_2.sh"
+        if t == "MGS":
+            script="install_management_2.sh"
 
         if not runScript(n,script):
             return
@@ -629,21 +612,23 @@ def configureLustre(n):
         print(f"Node {n['fqdn']}  is not in Imaged state")
 
 
+#Main start here
 
 initOCI()
-getConfig()
-print(json.dumps(DeploymentConfig))
-sys.exit(0)
-for n in CLUSTER["nodes"]:
-   createInstance("CLUSTER["name"], "BM.Standard3.64",n)
+   
+for cn in CLUSTER["nodes"]:
+    if not createInstance(CLUSTER["name"], cn["shape"], cn["name"]):
+        print(f"Creating instance {cn['name']} failed")
+    getConfig()
+    found=False
+    for n in DeploymentConfig["clusters"][CLUSTER["name"]]["nodes"]:
+        if cn["name"] == n["name"]:
+            configureNode(n,cn)
+            imageNode(n)
+            configureLustre(n)
+            found=True
+    if not found:
+        print(f"Instance Node {cn['name']} was not found")
 
-for cluster in DeploymentConfig["clusters"]:
-    for n in DeploymentConfig["clusters"][cluster]["nodes"]:
-        configureNode(n)
-        imageNode(n)
-        configureLustre(n)
-
-#if clusterName not in DeploymentConfig["clusters"]:
-    # create cluster
 
 
