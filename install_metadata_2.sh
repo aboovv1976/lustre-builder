@@ -179,7 +179,3 @@ df -h
 enable_lnet_at_boot_time
 echo "setup complete"
 exit 0;
-
-
-
-

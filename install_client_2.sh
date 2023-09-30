@@ -24,11 +24,6 @@ function disable_selinux {
     sed -i "s/SELINUX=enforcing/SELINUX=disabled/g" /etc/selinux/config
 }
 
-function set_params {
-    echo "options ksocklnd nscheds=10 sock_timeout=100 credits=2560 peer_credits=63 enable_irq_affinity=0"  >  /etc/modprobe.d/ksocklnd.conf
-}
-
-
 function disable_firewall {
     systemctl stop firewalld
     systemctl disable firewalld
@@ -41,7 +36,7 @@ function disable_firewall {
 disable_selinux
 disable_firewall
 
-mgs_fqdn_hostname_nic1=mgs-server-vnic-1.$1
+mgs_fqdn_hostname_nic1=$1
 fs_type=Persistent
 uname -a
 
@@ -58,7 +53,6 @@ privateIp=`curl -s http://169.254.169.254/opc/v1/vnics/ | jq '.[0].privateIp ' |
 interface=`ip addr |egrep "inet $privateIp|BROADCAST" | grep -B 1 "inet $privateIp" | grep BROADCAST | cut -f2 -d:`
 
 lnetctl net add --net tcp1 --if $interface  –peer-timeout 180 –peer-credits 128 –credits 1024
-
 
 lnetctl net show --net tcp > tcp.yaml
 lnetctl  import --del tcp.yaml
