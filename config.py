@@ -19,6 +19,7 @@ ImageId="ocid1.image.oc1.iad.aaaaaaaamf35m2qg5krijvq4alf6qmvdqiroq4i5zdwqqdijmst
 MGSHostPattern="mgs-server-"
 MDSHostPattern="metdata-server-"
 OSSHostPattern="storage-server-"
+ClientHostPattern="client-"
 DeploymentConfig={}
 OCIConfig=None
 
@@ -97,6 +98,11 @@ def getNodeType(n):
        if not idx.isnumeric():
            return None
        return { "type": "MDS", "idx": int(idx) }
+    if ClientHostPattern == name[:len(ClientHostPattern)]:
+       idx=name[len(ClientHostPattern):]
+       if not idx.isnumeric():
+           return None
+       return { "type": "CLIENT", "idx": int(idx) }
     else:
         return None
 
@@ -223,6 +229,7 @@ def getConfig():
         details["state"]=i.lifecycle_state
         details["id"]=i.id
         details["type"]=t
+        details["cluster"]=cluster
 
         instanceClient = oci.core.ComputeClient(OCIConfig)
         r=oci.pagination.list_call_get_all_results(
@@ -242,6 +249,9 @@ def getConfig():
         if "name_a" not in details:
             details["name_a"]=name
             details["fqdn_a"]=details["fqdn"]
+        
+        if t == "MGS":
+            DeploymentConfig["clusters"][cluster]["mgs"] = details["fqdn_a"]
 
         r=oci.pagination.list_call_get_all_results(
                 instanceClient.list_volume_attachments,
@@ -571,9 +581,12 @@ def imageNode(n):
     if not checkSsh(n):
         return False
 
-    if not runScript(n,"image_server.sh") :
+    script="image_server.sh"
+    t=getNodeType(n)
+    if t and t["type"] == "CLIENT":
+        scipt="install_client.sh"
+    if not runScript(n,script) :
         return False
-
     setImaged(n)
 #    rebootNode(n)
     return True
@@ -618,8 +631,13 @@ def configureLustre(n):
         script="install_storage_2.sh "
     if t == "MGS":
         script="install_management_2.sh "
+    if t == "CLIENT":
+        script="install_client_2.sh "
 
-    if not runScript(n,script,n["fqdn_a"]):
+    if "mgs" not in DeploymentConfig["clusters"][n["cluster"]] :
+        print("Unable to find MGS for cluster " + DeploymentConfig["clusters"][n["cluster"]])
+        return False
+    if not runScript(n,script,DeploymentConfig["clusters"][n["cluster"]]["mgs"]):
         return False
 
     setReady(n)
