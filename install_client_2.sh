@@ -17,11 +17,30 @@ function enable_lnet_at_boot_time {
   systemctl enable lnet
 }
 
+
+function disable_selinux {
+    setenforce 0
+    sed -i "s/SELINUX=enforcing/SELINUX=disabled/g" /etc/sysconfig/selinux
+    sed -i "s/SELINUX=enforcing/SELINUX=disabled/g" /etc/selinux/config
+}
+
+function set_params {
+    echo "options ksocklnd nscheds=10 sock_timeout=100 credits=2560 peer_credits=63 enable_irq_affinity=0"  >  /etc/modprobe.d/ksocklnd.conf
+}
+
+
+function disable_firewall {
+    systemctl stop firewalld
+    systemctl disable firewalld
+}
+
 ##############
 # Start of script execution
 #############
 
-setenforce 0
+disable_selinux
+disable_firewall
+
 mgs_fqdn_hostname_nic1=mgs-server-vnic-1.$1
 fs_type=Persistent
 uname -a
@@ -99,5 +118,4 @@ enable_lnet_at_boot_time
 
 
 echo "complete"
-set +x
 

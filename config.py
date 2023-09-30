@@ -49,7 +49,7 @@ def runCmd(cmd,output=True,timeout=None):
     def timerout(p):
         print("Error: timed out")
         timer.cancel()
-        os.killpg(os.getpgid(p.pid), signal.SIGTERM)
+        os.kill(p.pid, signal.SIGKILL)
 
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     timer = threading.Timer(timeout, timerout, args=[p])
@@ -254,15 +254,15 @@ def getConfig():
             if x.attachment_type == "iscsi":
                 if x.lifecycle_state == "ATTACHED":
                     cc+=1
-                    cmds.append(f"yum iscsiadm -m node -o new -T {x.iqn} -p {x.ipv4}:{x.port}")
-                    cmds.append(f"yum iscsiadm -m node -o update -T {x.iqn} -n node.startup -v automatic")
-                    cmds.append(f"yum iscsiadm -m node -T {x.iqn} -p {x.ipv4}:{x.port} -l")
+                    cmds.append(f"sudo iscsiadm -m node -o new -T {x.iqn} -p {x.ipv4}:{x.port}")
+                    cmds.append(f"sudo iscsiadm -m node -o update -T {x.iqn} -n node.startup -v automatic")
+                    cmds.append(f"sudo iscsiadm -m node -T {x.iqn} -p {x.ipv4}:{x.port} -l")
 
         details["volumes"]=cc
         details["cmds"]=cmds
 
         DeploymentConfig["clusters"][cluster]["nodes"].append(details)
-    print(json.dumps(DeploymentConfig,indent=4))
+#    print(json.dumps(DeploymentConfig,indent=4))
     return error
 
 def attachVnic(instanceId, displayName,subnetId, nicIndex):
@@ -353,10 +353,6 @@ def getNodeStatus(n):
         return r.freeform_tags["lustre-node-status"]
     else:
         return "Unknown"
-
-def imageNode(n):
-    if getNodeStatus(n) != "Created":
-        print("Node " + n['name'] + " should not be imaged. Not in Created state")
 
 def updateTag(instanceId, tags):
     instanceClient = oci.core.ComputeClient(OCIConfig)
@@ -458,13 +454,17 @@ def createInstance(clusterName, shape, instanceName=None):
         'RUNNING',
         max_wait_seconds=300
         )
-    print("Set instance " + name + " to Created")
-    updateTag(r.id, tags)
+
+    if getNodeStatus( { "id": r.id } ) == "Unknown":
+        print("Set instance " + name + " to Created")
+        updateTag(r.id, tags)
+
     return r
 
 def getLustre(n):
     host=n["fqdn"]
-    r=runRemoteCmd(host,"rpm -qa |grep ^lustre-2",timeout=10)
+    r=runRemoteCmd(host,"rpm -qa |grep ^lustre-2")
+#    print(r)
     if r["status"] == 0:
         return r["output"].strip()
     else:
@@ -472,7 +472,7 @@ def getLustre(n):
 
 def getKernel(n):
     host=n["fqdn"]
-    r=runRemoteCmd(host,"uname -a | awk '{print \$3}'",timeout=10)
+    r=runRemoteCmd(host,"uname -a | awk '{print \$3}'")
     if r["status"] == 0:
         return r["output"].strip()
     else:
@@ -480,16 +480,14 @@ def getKernel(n):
 
 def checkSsh(n,timeout=10):
     host=n["fqdn"]
-    t=0
-    while t <= 10:
+    start=time.time()
+    while time.time() - start < 600:
         print("Checking ssh access to " + n["name"])
         r=runRemoteCmd(host,"echo test",timeout=timeout)
         if r["status"] == 0: 
-            print("ssh is available to node " + n["name"])
             return True
         else:
-            time.sleep(30)
-            t+=10
+            time.sleep(10)
             continue
     return False
 
@@ -504,120 +502,128 @@ def iSCSIConfig(n):
 
 def configureNode(n,template):
 
-    if getNodeStatus(n) == "Created":
-        print(f"Configuring node {n['name']} with additional {template['vnics']-n['vnics']} VNIC and {template['volumes']-n['volumes']} volumes")
-        vols=template["volumes"]
-        nicIndex=template["nic"]
-        vnics=template["vnics"]
+    if getNodeStatus(n) != "Created":
+        print("Node " + n['name'] + " should not be configured. Not in Created state")
+        return False
 
-        if n["type"] == "MGS":
-            nicName=f"{MGSHostPattern}vnic-{n['idx']}"
-            bvName=f"{MGSHostPattern}{n['idx']}-MGT-"
-        if n["type"] == "MDS":
-            nicName=f"{MDSHostPattern}vnic-{n['idx']}"
-            bvName=f"{MDSHostPattern}{n['idx']}-MDT-"
-        if n["type"] == "OSS":
-            nicName=f"{OSSHostPattern}vnic-{n['idx']}"
-            bvName=f"{OSSHostPattern}{n['idx']}-OST-"
+    print(f"Configuring node {n['name']} with additional {template['vnics']-n['vnics']} VNIC and {template['volumes']-n['volumes']} volumes")
+    vols=template["volumes"]
+    nicIndex=template["nic"]
+    vnics=template["vnics"]
 
-        if n["vnics"] < vnics:
-            print("Creating and attaching vnic ...")
-            attachVnic(n["id"], nicName, DeploymentConfig["basicConfig"]["dataNet"]["id"], nicIndex)
-        if n["volumes"] < vols:
-            for i in range(n["volumes"]+1,vols+1):
-                name=f"{bvName}{i}" 
-                print("Creating and attaching Block Volumes " + name)
-                createAndAttachBV(name,
-                DeploymentConfig["basicConfig"]["availabilityDomain"], 
-                DeploymentConfig["basicConfig"]["compartmentId"], 
-                template["bvSize"], n["id"])
-        if checkSsh(n):
-            setConfigured(n)
+    if n["type"] == "MGS":
+        nicName=f"{MGSHostPattern}vnic-{n['idx']}"
+        bvName=f"{MGSHostPattern}{n['idx']}-MGT-"
+    if n["type"] == "MDS":
+        nicName=f"{MDSHostPattern}vnic-{n['idx']}"
+        bvName=f"{MDSHostPattern}{n['idx']}-MDT-"
+    if n["type"] == "OSS":
+        nicName=f"{OSSHostPattern}vnic-{n['idx']}"
+        bvName=f"{OSSHostPattern}{n['idx']}-OST-"
 
-def reboot(n):
+    if n["vnics"] < vnics:
+        print("Creating and attaching vnic ...")
+        attachVnic(n["id"], nicName, DeploymentConfig["basicConfig"]["dataNet"]["id"], nicIndex)
+    if n["volumes"] < vols:
+        for i in range(n["volumes"]+1,vols+1):
+            name=f"{bvName}{i}" 
+            print("Creating and attaching Block Volumes " + name)
+            createAndAttachBV(name,
+            DeploymentConfig["basicConfig"]["availabilityDomain"], 
+            DeploymentConfig["basicConfig"]["compartmentId"], 
+            template["bvSize"], n["id"])
+    if checkSsh(n):
+        setConfigured(n)
+    return True
+
+def rebootNode(n):
     print(f"Rebooting {n['fqdn']} ....")
-    r=runCmd(f"sudo reboot")
+    r=runRemoteCmd(n['fqdn'], "sudo reboot")
+    if r["status"] != 0 :
+        print(f"Node {n['fqdn']} reboot failed")
+        return False
+    return True
 
-def runScript(n,script):
+def runScript(n,script,params=None):
     print(f"Running {script} on node {n['name']}")
-    r=runCmd(f"cat {script} | ssh {n['fqdn']} 'cat > /tmp/{script}'")
+    r=runCmd(f"cat {script} | ssh -T -o StrictHostKeyChecking=no {n['fqdn']} 'cat > /tmp/{script}'")
     if r["status"] != 0 :
         print(f"Copying {script} to {n['fqdn']} failed")
         return False
-    runRemoteCmd(n['fqdn'],f"chmod 755 /tmp/{script}.sh")
+    r=runRemoteCmd(n['fqdn'],f"chmod 755 /tmp/{script}")
     if r["status"] != 0 :
         print(f"setting mode for {script} on {n['fqdn']} failed")
         return False
-    runRemoteCmd(n['fqdn'],f"sudo /tmp/{script}",output=True)
+    if params:
+        script = script + " " + params
+    r=runRemoteCmd(n['fqdn'],f"sudo /tmp/{script}",output=True)
     if r["status"] != 0 :
-        print(f"{script} failed to image {n['fqdn']} failed")
+        print(f"{script} failed on {n['fqdn']}")
         return False
     return True
 
 def imageNode(n):
     print(f"Imaging node {n['name']} with lustre software")
+#    if getNodeStatus(n) != "Configured":
+#        print("Node " + n['name'] + " should not be imaged. Not in Configured state")
+#        return False
+
     if not checkSsh(n):
-        return
+        return False
 
-    if getNodeStatus(n) == "Imaged":
-        print(f"Node {n['name']} is already imaged")
-        return
+    if not runScript(n,"image_server.sh") :
+        return False
 
-    if getNodeStatus(n) == "Configured":
-        if not runScript(n,"image_server.sh") :
-            return
-        setImaged(n)
-        reboot(n)
-    else:
-        print(f"Node {n['fqdn']}  is not in Configured state")
+    setImaged(n)
+#    rebootNode(n)
+    return True
 
 def configureLustre(n):
     print(f"Configuring lustre on node {n['name']}")
+    if getNodeStatus(n) != "Imaged":
+        print("Node " + n['name'] + " lustre should not be configured. Not in Imaged state")
+        return False
+
     if not checkSsh(n):
-        return
+        return False
+
     v1=getKernel(n)
     v2=getLustre(n)
     print("Kernel version:" + v1)
     print("Lustre version:" + v2)
     if ( v1 != ServerKernelVerson ):
         print(f"Node {n['name']} is not running currect kernel version")
-        return
+        return False
     if ( v2 != ServerLustreVersion ):
         print(f"Node {n['name']} is not running currect lustre version")
-        return
+        return False
 
-    if getNodeStatus(n) == "Ready":
-        print(f"Node {n['name']} is already in ready state")
-        return
+    if not iSCSIConfig(n):
+        print(f"Configuring iSCSI devices on node {n['name']} failed")
+        return False
 
-    if getNodeStatus(n) == "Imaged":
-        if not iSCSIConfig(n):
-            print(f"Configuring iSCSI devices on node {n['name']} failed")
-            return
-
-        if not runScript(n,f"update_resolv_conf.sh {n['vcnDomain']} {n['domain']} {n['dataDomain']}"):
-            print(f"Updating resolv.conf failed on node {n['name']}")
-            return
+    if not runScript(n,f"update_resolv_conf.sh" , f"{n['vcnDomain']} {n['domain']} {n['dataDomain']}"):
+        print(f"Updating resolv.conf failed on node {n['name']}")
+        return False
             
-        t=getNodeType(n)
-        if t == None:
-            print("Unknow node type {n['fqdn']}")
-            return
+    t=getNodeType(n)
+    if t == None:
+        print("Unknow node type {n['fqdn']}")
+        return False
 
-        t=t["type"]
-        if t == "MDS":
-            script="install_metadata_2.sh "
-        if t == "OSS":
-            script="install_storage_2.sh "
-        if t == "MGS":
-            script="install_management_2.sh "
+    t=t["type"]
+    if t == "MDS":
+        script="install_metadata_2.sh "
+    if t == "OSS":
+        script="install_storage_2.sh "
+    if t == "MGS":
+        script="install_management_2.sh "
 
-        if not runScript(n,script + n["fqdn_a"]):
-            return
+    if not runScript(n,script,n["fqdn_a"]):
+        return False
 
-        setReady(n)
-    else:
-        print(f"Node {n['fqdn']}  is not in Imaged state")
+    setReady(n)
+    return True
 
 
 #Main start here
@@ -633,7 +639,7 @@ for cn in CLUSTER["nodes"]:
     for n in DeploymentConfig["clusters"][CLUSTER["name"]]["nodes"]:
         if cn["name"] == n["name"]:
             configureNode(n,cn)
-            imageNode(n)
+#            imageNode(n)
             configureLustre(n)
             found=True
     if not found:

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 set -x
-set -e
+#set -e
 
 function install_lustre {
 
@@ -50,14 +50,12 @@ yum --nogpgcheck --enablerepo=lustre-server install -y \
 lustre-resource-agents
 
 dnf -y install oraclelinux-developer-release-el8
-dnf install python36-oci-cli
+dnf -y install python36-oci-cli
 
 }
 
 function switch_kernel {
-
     grubby --set-default  `grubby --info=ALL | grep ^kernel |grep  lustre.x86_64 | cut -f2 -d\"` || echo "Unable to find or set the kernel to lusture kernel"
-
 }
 
 function disable_selinux {
@@ -72,7 +70,6 @@ function set_params {
 
 
 function disable_firewall {
-
     systemctl stop firewalld
     systemctl disable firewalld
 }
@@ -92,6 +89,7 @@ switch_kernel
 
 touch /tmp/complete
 echo "complete.  reboot now"
+exit 0
 
 ##########
 ## End #

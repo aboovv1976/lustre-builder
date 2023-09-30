@@ -104,8 +104,6 @@ echo "$mount_device               $mount_point           lustre  defaults,_netde
 # Start of script execution
 #############
 
-setenforce 0
-
 mgs_fqdn_hostname_nic1=$1
 uname -a
 
@@ -117,7 +115,7 @@ lctl list_nids
 # Secondary VNIC details
 privateIp=`curl -s http://169.254.169.254/opc/v1/vnics/ | jq '.[1].privateIp ' | sed 's/"//g' ` ;
 [[ -n "$privateIp" ]] && configure_vnics
-[[ -z "$privateIP" ]] && privateIp=`curl -s http://169.254.169.254/opc/v1/vnics/ | jq '.[0].privateIp ' | sed 's/"//g' ` ;
+[[ -z "$privateIp" ]] && privateIp=`curl -s http://169.254.169.254/opc/v1/vnics/ | jq '.[0].privateIp ' | sed 's/"//g' ` ;
 interface=`ip addr |egrep "inet $privateIp|BROADCAST" | grep -B 1 "inet $privateIp" | grep BROADCAST | cut -f2 -d:`
 lnetctl net add --net tcp1 --if $interface  –peer-timeout 180 –peer-credits 128 –credits 1024
 
