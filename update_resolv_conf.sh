@@ -1,6 +1,6 @@
 ## Modify resolv.conf to ensure DNS lookups work from one private subnet to another subnet
 mv /etc/resolv.conf /etc/resolv.conf.backup
-echo "search $2.$1 $3.$1 $1" > /etc/resolv.conf
+echo "search $2 $3 $1" > /etc/resolv.conf
 echo "nameserver 169.254.169.254" >> /etc/resolv.conf
 
 # The below is to ensure any custom change to hosts and resolv.conf will not be overwritten with data from metaservice, but dhclient will still overwrite resolv.conf.

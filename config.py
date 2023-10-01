@@ -11,6 +11,7 @@ import threading
 import signal
 import json
 import os
+import logging
 
 PublicNetTag="public"
 StorageNetTag="storage"
@@ -42,20 +43,44 @@ CLUSTER = {
             { 
                 "name": "metadata-server-1",
                 "shape": "BM.Standard.E4.128",
-                "nic": 0,
+                "nic": 1,
                 "vnics": 2,
                 "volumes": 10,
                 "bvSize": 50 
+            },
+            { 
+                "name": "storage-server-3",
+                "shape": "BM.Standard3.64",
+                "nic": 1,
+                "vnics": 2,
+                "volumes": 1,
+                "bvSize": 5000 
             }
         ]
         
 }
 
+logger=None
+
+def logInfo(message):
+    logger.info(message)
+
+def logWarn(message):
+    logger.warning(message)
+
+def logCritical(message):
+    logger.critical(message)
+
+def logDebug(message):
+    logger.debug(message)
+
+def logError(message):
+    logger.error(message)
 
 def runCmd(cmd,output=True,timeout=None):
-#    print("cmd: " + cmd)
+    logDebug("cmd: " + cmd)
     def timerout(p):
-#        print("Error: timed out")
+        logDebug("Error: timed out")
         timer.cancel()
         os.kill(p.pid, signal.SIGKILL)
 
@@ -88,9 +113,21 @@ def runCmd(cmd,output=True,timeout=None):
 def runRemoteCmd(ip,cmd,output=False,timeout=None):
     return runCmd(f'ssh -T -o StrictHostKeyChecking=no {ip} "{cmd}"',output=output, timeout=timeout)
 
-def initOCI():
+def initOCI(logLevel=logging.INFO):
+    global logger
     global OCIConfig
+    dateFormat="%Y-%m-%dT%H:%M:%S"
+    fmt = logging.Formatter(
+        fmt='%(asctime)s.%(msecs)03dZ - %(name)s - %(levelname)s - %(message)s',
+        datefmt= dateFormat
+    )
     OCIConfig = oci.config.from_file()
+    logger = logging.getLogger('LBUILDER')
+    logger.setLevel(logLevel)
+    sh = logging.StreamHandler()
+    sh.setFormatter(fmt)
+    logger.addHandler(sh)
+    logInfo("Initi complete")
 
 def getNodeType(n):
     name=n["name"]
@@ -120,7 +157,7 @@ def getNodeType(n):
 def getConfig():
     error=False
     basicConfig={}
-    print("Getting VCN and subnet details")
+    logInfo("Getting VCN and subnet details")
     headers = {"Authorization": "Bearer Oracle"}
     r = requests.get("http://169.254.169.254/opc/v2/instance/", headers=headers).json()
     instanceId=r["id"]
@@ -172,10 +209,10 @@ def getConfig():
                 DeploymentConfig["clusters"][vv]["nodes"]=[]
 
     if not public:
-        print(f"Public subnet not found in vcn id {vcn}")
+        logCritcal(f"Public subnet not found in vcn id {vcn}")
         error=True
     if not storage:
-        print(f"Storage subnet not found in vcn id {vcn}")
+        logCritical(f"Storage subnet not found in vcn id {vcn}")
         error=True
     if not data:
         data = storage
@@ -185,7 +222,7 @@ def getConfig():
     basicConfig["dataNet"]=data
 
     DeploymentConfig["basicConfig"]=basicConfig
-    print("Getting Instance details")
+    logInfo("Getting Instance details")
     instanceClient = oci.core.ComputeClient(OCIConfig)
 
     r=oci.pagination.list_call_get_all_results(
@@ -198,7 +235,7 @@ def getConfig():
     for i in r:
 
         if i.lifecycle_state in [ "TERMINATING", "TERMINATED" ]:
-            print("Skipping instance not marked in currect state " + name)
+            logDebug("Skipping instance not marked in currect state " + name)
             continue
 
         name=i.display_name
@@ -213,7 +250,7 @@ def getConfig():
                 cluster=vv
 
         if status == None or cluster == None:
-            print("Skipping instance not marked in any cluster " + name)
+            logDebug("Skipping instance not marked in any cluster " + name)
             continue
 
         if cluster not in DeploymentConfig["clusters"]:
@@ -225,7 +262,7 @@ def getConfig():
         details["name"]=name
         t=getNodeType(details)
         if t == None:
-            print("Skipping instance doesn't have consistent name pattern " + name)
+            logDebug("Skipping instance doesn't have consistent name pattern " + name)
             continue
         idx=t["idx"]
         t=t["type"]
@@ -283,7 +320,7 @@ def getConfig():
         details["cmds"]=cmds
 
         DeploymentConfig["clusters"][cluster]["nodes"].append(details)
-    print(json.dumps(DeploymentConfig,indent=4))
+    logDebug(json.dumps(DeploymentConfig,indent=4))
     return error
 
 def attachVnic(instanceId, displayName,subnetId, nicIndex):
@@ -313,7 +350,7 @@ def attachVnic(instanceId, displayName,subnetId, nicIndex):
 
         return True
 
-    print("Attach vnic failed")
+    logCritical("Attach vnic failed")
     return None
 
 def attachBV(displayName, instanceId, attType, volumeId):
@@ -337,7 +374,7 @@ def attachBV(displayName, instanceId, attType, volumeId):
             )
         return r.data
 
-    print("Volume attach failed")
+    logCritical("Volume attach failed")
     return False
 
 def createAndAttachBV(displayName,ad, compartmentId, size, instanceId):
@@ -364,7 +401,7 @@ def createAndAttachBV(displayName,ad, compartmentId, size, instanceId):
     if r and r.status/100 == 2:
         return attachBV(displayName, instanceId, "iscsi", r.data.id)
 
-    print("Create volume failed")
+    logCritical("Create volume failed")
     return None
 
 def getNodeStatus(n):
@@ -424,16 +461,16 @@ def createInstance(clusterName, shape, instanceName=None):
     for i in r:
         if i.display_name == name:
             if i.lifecycle_state in [ "RUNNING", "STARTING" ]:
-#                print("Found instance " + name)
+               logDebug("Found instance " + name)
                 found=True
                 r=i
                 break
             elif i.lifecycle_state not in [ "TERMINATING", "TERMINATED" ]:
-                print("Found instnace" + name + " in incorrect sate " + i.lifecycle_state )
+                logDebug("Found instnace" + name + " in incorrect sate " + i.lifecycle_state )
                 return None
 
     if not found:
-        print("Creating new instance " + name)
+        logInfo("Creating new instance " + name)
         vnicDetails=oci.core.models.CreateVnicDetails(
                 assign_private_dns_record=True,
                 display_name=name,
@@ -466,7 +503,7 @@ def createInstance(clusterName, shape, instanceName=None):
         if r and r.status/100 == 2:
             r=r.data
         else:
-            print("Create instance failed")
+            logCritical("Create instance failed")
             return None
     oci.wait_until(
         instanceClient,
@@ -477,7 +514,7 @@ def createInstance(clusterName, shape, instanceName=None):
         )
 
     if getNodeStatus( { "id": r.id } ) == "Unknown":
-        print("Set instance " + name + " to Created")
+        logDebug("Set instance " + name + " to Created")
         updateTag(r.id, tags)
 
     getConfig()
@@ -486,7 +523,6 @@ def createInstance(clusterName, shape, instanceName=None):
 def getLustre(n):
     host=n["fqdn"]
     r=runRemoteCmd(host,"rpm -qa |grep ^lustre-2")
-#    print(r)
     if r["status"] == 0:
         return r["output"].strip()
     else:
@@ -504,7 +540,7 @@ def checkSsh(n,timeout=10):
     host=n["fqdn"]
     start=time.time()
     while time.time() - start < 600:
-        print("Checking ssh access to " + n["name"])
+        logInfo("Checking ssh access to " + n["name"])
         r=runRemoteCmd(host,"echo test",timeout=timeout)
         if r["status"] == 0: 
             return True
@@ -515,21 +551,21 @@ def checkSsh(n,timeout=10):
 
 def iSCSIConfig(n):
     host=n["fqdn"]
-    print("Setting up iSCSI access to block volumes on " + host)
+    logInfo("Setting up iSCSI access to block volumes on " + host)
     for c in n["cmds"]:
         r=runRemoteCmd(host,c)
         if r["status"] != 0:
-            print(f'Running command {c} failed on host {n["name"]}')
+            logError(f'Running command {c} failed on host {n["name"]}')
             return False
     return True
 
 def configureNode(n,template):
 
     if getNodeStatus(n) != "Created":
-        print("Node " + n['name'] + " already configured")
+        logError("Node " + n['name'] + " already configured")
         return True
 
-    print(f"Configuring node {n['name']} with additional {template['vnics']-n['vnics']} VNIC and {template['volumes']-n['volumes']} volumes")
+    logInfo(f"Configuring node {n['name']} with additional {template['vnics']-n['vnics']} VNIC and {template['volumes']-n['volumes']} volumes")
     vols=template["volumes"]
     nicIndex=template["nic"]
     vnics=template["vnics"]
@@ -548,12 +584,12 @@ def configureNode(n,template):
         bvName=f"{ClientHostPattern}{n['idx']}-CLT-"
 
     if n["vnics"] < vnics:
-        print("Creating and attaching vnic ...")
+        logInfo("Creating and attaching vnic ...")
         attachVnic(n["id"], nicName, DeploymentConfig["basicConfig"]["dataNet"]["id"], nicIndex)
     if n["volumes"] < vols:
         for i in range(n["volumes"]+1,vols+1):
             name=f"{bvName}{i}" 
-            print("Creating and attaching Block Volumes " + name)
+            logInfo("Creating and attaching Block Volumes " + name)
             createAndAttachBV(name,
             DeploymentConfig["basicConfig"]["availabilityDomain"], 
             DeploymentConfig["basicConfig"]["compartmentId"], 
@@ -563,33 +599,33 @@ def configureNode(n,template):
     return True
 
 def rebootNode(n):
-    print(f"Rebooting {n['fqdn']} ....")
+    logInfo(f"Rebooting {n['fqdn']} ....")
     r=runRemoteCmd(n['fqdn'], "sudo reboot")
     time.sleep(15)
     return True
 
 def runScript(n,script,params=None):
-    print(f"Running {script} on node {n['name']}")
+    logInfo(f"Running {script} on node {n['name']}")
     r=runCmd(f"cat {script} | ssh -T -o StrictHostKeyChecking=no {n['fqdn']} 'cat > /tmp/{script}'")
     if r["status"] != 0 :
-        print(f"Copying {script} to {n['fqdn']} failed")
+        logCritical(f"Copying {script} to {n['fqdn']} failed")
         return False
     r=runRemoteCmd(n['fqdn'],f"chmod 755 /tmp/{script}")
     if r["status"] != 0 :
-        print(f"setting mode for {script} on {n['fqdn']} failed")
+        logCritical(f"setting mode for {script} on {n['fqdn']} failed")
         return False
     if params:
         script = script + " " + params
     r=runRemoteCmd(n['fqdn'],f"sudo /tmp/{script}",output=True)
     if r["status"] != 0 :
-        print(f"{script} failed on {n['fqdn']}")
+        logCritical(f"{script} failed on {n['fqdn']}")
         return False
     return True
 
 def imageNode(n):
-    print(f"Imaging node {n['name']} with lustre software")
+    logInfo(f"Imaging node {n['name']} with lustre software")
     if getNodeStatus(n) != "Configured":
-        print(f"Node {n['name']} already imaged")
+        logError(f"Node {n['name']} already imaged")
         return True
 
     if not checkSsh(n):
@@ -606,37 +642,36 @@ def imageNode(n):
     return True
 
 def configureLustre(n):
-    print(f"Configuring lustre on node {n['name']}")
+    logInfo(f"Configuring lustre on node {n['name']}")
     if getNodeStatus(n) != "Imaged":
-        print("Node " + n['name'] + " already configured for lustre")
+        logError("Node " + n['name'] + " already configured for lustre")
         return True
 
-#    print(json.dumps(n,indent=4))
     if not checkSsh(n):
         return False
 
     v1=getKernel(n)
     v2=getLustre(n)
-    print("Kernel version:" + v1)
-    print("Lustre version:" + v2)
+    logDebug("Kernel version:" + v1)
+    logDebug("Lustre version:" + v2)
     if ( v1 != ServerKernelVerson ):
-        print(f"Node {n['name']} is not running currect kernel version")
+        logCritical(f"Node {n['name']} is not running currect kernel version")
         return False
     if ( v2 != ServerLustreVersion ):
-        print(f"Node {n['name']} is not running currect lustre version")
+        logCritical(f"Node {n['name']} is not running currect lustre version")
         return False
 
     if not iSCSIConfig(n):
-        print(f"Configuring iSCSI devices on node {n['name']} failed")
+        logCritical(f"Configuring iSCSI devices on node {n['name']} failed")
         return False
 
     if not runScript(n,f"update_resolv_conf.sh" , f"{n['vcnDomain']} {n['domain']} {n['dataDomain']}"):
-        print(f"Updating resolv.conf failed on node {n['name']}")
+        logCritical(f"Updating resolv.conf failed on node {n['name']}")
         return False
             
     t=getNodeType(n)
     if t == None:
-        print("Unknow node type {n['fqdn']}")
+        logCritical("Unknow node type {n['fqdn']}")
         return False
 
     t=t["type"]
@@ -650,7 +685,7 @@ def configureLustre(n):
         script="install_client_2.sh "
 
     if "mgs" not in DeploymentConfig["clusters"][n["cluster"]] :
-        print("Unable to find MGS for cluster " + DeploymentConfig["clusters"][n["cluster"]])
+        logCritical("Unable to find MGS for cluster " + DeploymentConfig["clusters"][n["cluster"]])
         return False
     if not runScript(n,script,DeploymentConfig["clusters"][n["cluster"]]["mgs"]):
         return False
@@ -661,13 +696,25 @@ def configureLustre(n):
 
 #Main start here
 initOCI()
+sys.exit(0)
 runCmd("mv ~/.ssh/known_hosts ~/.ssh/known_hosts.old 2>/dev/null")
    
 for cn in CLUSTER["nodes"]:
     getConfig()
+    finished=False
+    for n in DeploymentConfig["clusters"][CLUSTER["name"]]["nodes"]:
+        if cn["name"] == n["name"]:
+            if n["status"] == "Ready":
+                finished=True
+                logInfo(f"Node {n['name']} is already in Ready state")
+                break
+    if finished:
+        continue
+
     if not createInstance(CLUSTER["name"], cn["shape"], cn["name"]):
-        print(f"Create instance {cn['name']} failed")
+        logCritical(f"Create instance {cn['name']} failed")
         sys.exit(0)
+
     found=False
     for n in DeploymentConfig["clusters"][CLUSTER["name"]]["nodes"]:
         if cn["name"] == n["name"]:
@@ -676,8 +723,8 @@ for cn in CLUSTER["nodes"]:
                 sys.exit(1)
 
     if not found:
-        print("Instnace " + cn["name"] + " not found in any running instances")
-        sys.exit(1)
+        logError("Instnace " + cn["name"] + " not found in any running instances")
+        continue
 
     for n in DeploymentConfig["clusters"][CLUSTER["name"]]["nodes"]:
         if not imageNode(n):

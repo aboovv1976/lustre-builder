@@ -2,6 +2,7 @@
 
 set -x
 
+FAILED=0
 ##############
 function configure_vnics {
 
@@ -28,12 +29,18 @@ EOF
 systemctl enable secondnic.service
 systemctl start secondnic.service
 
-# put this in the background so the main script can terminate and continue with the deployment
+retry=0
 while !( systemctl restart secondnic.service )
 do
    # give the infrastructure another 10 seconds to provide the metadata for the second vnic
    echo waiting for second NIC to come online
    sleep 10
+   retry=`expr $retry + 1`
+   if [ "$retry" -ge "11" ]
+   then
+           FAILED=1
+	   exit 1
+   fi
 done
 
 }

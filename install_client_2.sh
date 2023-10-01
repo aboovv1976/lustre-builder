@@ -1,7 +1,7 @@
 #/bin/bash
 set -x
 
-
+FAILED=0
 function enable_lnet_at_boot_time {
   # Update lnet service to start with correct config and enable at boot time
   lnet_service_config="/usr/lib/systemd/system/lnet.service"
