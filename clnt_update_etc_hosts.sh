@@ -35,7 +35,6 @@ find_cluster_nodes () {
 }
 
 nodeType="management"
-#domainName=fs.hfs.oraclevcn.com
 domainName=$1
 nodeHostnamePrefix=mgs-server-vnic-
 nodeCount=1

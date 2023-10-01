@@ -13,6 +13,8 @@ import json
 import os
 import logging
 
+LOGLEVEL=logging.INFO
+
 PublicNetTag="public"
 StorageNetTag="storage"
 DataNetTag="data"
@@ -27,7 +29,13 @@ OCIConfig=None
 ServerKernelVerson="4.18.0-477.10.1.el8_lustre.x86_64"
 ServerLustreVersion="lustre-2.15.3-1.el8.x86_64"
 
-#STS = [ "storage-server-19", "storage-server-26", "storage-server-23", "storage-server-24", "storage-server-21", "storage-server-20", "storage-server-25", "storage-server-22", "storage-server-7", "storage-server-4", "storage-server-17", "storage-server-10", "storage-server-8", "storage-server-16", "storage-server-1", "storage-server-9", "storage-server-15", "storage-server-12" ]
+DefaultOSS = {
+                "shape": "BM.Standard3.64",
+                "nic": 1,
+                "vnics": 2,
+                "volumes": 1,
+                "bvSize": 5000 
+        }
 
 CLUSTER = {
         "name": "xai-phx-1",
@@ -55,6 +63,9 @@ CLUSTER = {
                 "vnics": 2,
                 "volumes": 1,
                 "bvSize": 5000 
+            },
+            { 
+                "name": "storage-server-1",
             }
         ]
         
@@ -113,7 +124,7 @@ def runCmd(cmd,output=True,timeout=None):
 def runRemoteCmd(ip,cmd,output=False,timeout=None):
     return runCmd(f'ssh -T -o StrictHostKeyChecking=no {ip} "{cmd}"',output=output, timeout=timeout)
 
-def initOCI(logLevel=logging.INFO):
+def initOCI():
     global logger
     global OCIConfig
     dateFormat="%Y-%m-%dT%H:%M:%S"
@@ -123,7 +134,7 @@ def initOCI(logLevel=logging.INFO):
     )
     OCIConfig = oci.config.from_file()
     logger = logging.getLogger('LBUILDER')
-    logger.setLevel(logLevel)
+    logger.setLevel(LOGLEVEL)
     sh = logging.StreamHandler()
     sh.setFormatter(fmt)
     logger.addHandler(sh)
@@ -696,10 +707,15 @@ def configureLustre(n):
 
 #Main start here
 initOCI()
-sys.exit(0)
 runCmd("mv ~/.ssh/known_hosts ~/.ssh/known_hosts.old 2>/dev/null")
    
 for cn in CLUSTER["nodes"]:
+    st=time.time()
+    logInfo(f"Node {cn["name"]} start")
+    for k in DefaultOSS:
+        if k not in cn:
+            cn[k]=DefaultOSS[k]
+
     getConfig()
     finished=False
     for n in DeploymentConfig["clusters"][CLUSTER["name"]]["nodes"]:
@@ -731,4 +747,5 @@ for cn in CLUSTER["nodes"]:
             sys.exit(1)
         if not configureLustre(n):
             sys.exit(1)
+    logInfo(f"Node {cn["name"]} finished, seconds={time.time()-st}")
 
