@@ -711,7 +711,7 @@ runCmd("mv ~/.ssh/known_hosts ~/.ssh/known_hosts.old 2>/dev/null")
    
 for cn in CLUSTER["nodes"]:
     st=time.time()
-    logInfo(f"Node {cn["name"]} start")
+    logInfo(f"Node {cn['name']} start")
     for k in DefaultOSS:
         if k not in cn:
             cn[k]=DefaultOSS[k]
@@ -747,5 +747,5 @@ for cn in CLUSTER["nodes"]:
             sys.exit(1)
         if not configureLustre(n):
             sys.exit(1)
-    logInfo(f"Node {cn["name"]} finished, seconds={time.time()-st}")
+    logInfo(f"Node {cn['name']} finished, seconds={time.time()-st}")
 
