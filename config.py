@@ -63,9 +63,14 @@ CLUSTER = {
                 "vnics": 2,
                 "volumes": 1,
                 "bvSize": 5000 
-            },
+            }
+            ,
             { 
-                "name": "storage-server-1",
+                "name": "storage-server-1"
+            }
+            ,
+            { 
+                "name": "storage-server-1"
             }
         ]
         
