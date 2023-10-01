@@ -1,7 +1,7 @@
 #!/bin/bash
 
 set -x
-FAILED=1
+FAILED=0
 ##############
 function configure_vnics {
 

@@ -724,28 +724,41 @@ for cn in CLUSTER["nodes"]:
                 finished=True
                 logInfo(f"Node {n['name']} is already in Ready state")
                 break
+
     if finished:
         continue
 
     if not createInstance(CLUSTER["name"], cn["shape"], cn["name"]):
         logCritical(f"Create instance {cn['name']} failed")
-        sys.exit(0)
+        continue
 
     found=False
+    failed=False
     for n in DeploymentConfig["clusters"][CLUSTER["name"]]["nodes"]:
         if cn["name"] == n["name"]:
             found=True
             if not configureNode(n,cn):
-                sys.exit(1)
+                failed=True
+            break
+
+    if failed:
+        continue
 
     if not found:
         logError("Instnace " + cn["name"] + " not found in any running instances")
         continue
 
+    failed=False
     for n in DeploymentConfig["clusters"][CLUSTER["name"]]["nodes"]:
-        if not imageNode(n):
-            sys.exit(1)
-        if not configureLustre(n):
-            sys.exit(1)
-    logInfo(f"Node {cn['name']} finished, seconds={time.time()-st}")
+        if cn["name"] == n["name"]:
+            if not imageNode(n):
+                failed=True
+                break
+            if not configureLustre(n):
+                failed=True
+                break
+            logInfo(f"Node {cn['name']} finished, seconds={time.time()-st}")
+            break
 
+    if failed:
+        continue
