@@ -461,7 +461,7 @@ def createInstance(clusterName, shape, instanceName=None):
     for i in r:
         if i.display_name == name:
             if i.lifecycle_state in [ "RUNNING", "STARTING" ]:
-               logDebug("Found instance " + name)
+                logDebug("Found instance " + name)
                 found=True
                 r=i
                 break
