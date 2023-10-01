@@ -46,9 +46,9 @@ CLUSTER = {
 
 
 def runCmd(cmd,output=True,timeout=None):
-    print("cmd: " + cmd)
+#    print("cmd: " + cmd)
     def timerout(p):
-        print("Error: timed out")
+#        print("Error: timed out")
         timer.cancel()
         os.kill(p.pid, signal.SIGKILL)
 
@@ -56,6 +56,7 @@ def runCmd(cmd,output=True,timeout=None):
     timer = threading.Timer(timeout, timerout, args=[p])
     timer.start()
     out=""
+    error=""
     for line in iter(p.stdout.readline,b''):
         line=line.decode("utf-8").strip()
         out+=line
@@ -63,15 +64,18 @@ def runCmd(cmd,output=True,timeout=None):
             print(line,flush=True)
     for line in iter(p.stderr.readline,b''):
         line=line.decode("utf-8").strip()
-        out+=line
+        error+=line
         if output:
             print(line, flush=True)
     p.stdout.close()
+    p.stderr.close()
     r = p.wait()
     timer.cancel()
+
     return {
                 "output": out,
-                "status": r
+                "status": r,
+                "error": error
             }
 
 def runRemoteCmd(ip,cmd,output=False,timeout=None):
@@ -272,7 +276,7 @@ def getConfig():
         details["cmds"]=cmds
 
         DeploymentConfig["clusters"][cluster]["nodes"].append(details)
-#    print(json.dumps(DeploymentConfig,indent=4))
+    print(json.dumps(DeploymentConfig,indent=4))
     return error
 
 def attachVnic(instanceId, displayName,subnetId, nicIndex):
@@ -469,6 +473,7 @@ def createInstance(clusterName, shape, instanceName=None):
         print("Set instance " + name + " to Created")
         updateTag(r.id, tags)
 
+    getConfig()
     return r
 
 def getLustre(n):
@@ -503,6 +508,7 @@ def checkSsh(n,timeout=10):
 
 def iSCSIConfig(n):
     host=n["fqdn"]
+    print("Setting up iSCSI access to block volumes on " + host)
     for c in n["cmds"]:
         r=runRemoteCmd(host,c)
         if r["status"] != 0:
@@ -513,8 +519,8 @@ def iSCSIConfig(n):
 def configureNode(n,template):
 
     if getNodeStatus(n) != "Created":
-        print("Node " + n['name'] + " should not be configured. Not in Created state")
-        return False
+        print("Node " + n['name'] + " already configured")
+        return True
 
     print(f"Configuring node {n['name']} with additional {template['vnics']-n['vnics']} VNIC and {template['volumes']-n['volumes']} volumes")
     vols=template["volumes"]
@@ -545,16 +551,14 @@ def configureNode(n,template):
             DeploymentConfig["basicConfig"]["availabilityDomain"], 
             DeploymentConfig["basicConfig"]["compartmentId"], 
             template["bvSize"], n["id"])
-    if checkSsh(n):
-        setConfigured(n)
+    setConfigured(n)
+    getConfig()
     return True
 
 def rebootNode(n):
     print(f"Rebooting {n['fqdn']} ....")
     r=runRemoteCmd(n['fqdn'], "sudo reboot")
-    if r["status"] != 0 :
-        print(f"Node {n['fqdn']} reboot failed")
-        return False
+    time.sleep(15)
     return True
 
 def runScript(n,script,params=None):
@@ -577,9 +581,9 @@ def runScript(n,script,params=None):
 
 def imageNode(n):
     print(f"Imaging node {n['name']} with lustre software")
-#    if getNodeStatus(n) != "Configured":
-#        print("Node " + n['name'] + " should not be imaged. Not in Configured state")
-#        return False
+    if getNodeStatus(n) != "Configured":
+        print(f"Node {n['name']} already imaged")
+        return True
 
     if not checkSsh(n):
         return False
@@ -591,15 +595,16 @@ def imageNode(n):
     if not runScript(n,script) :
         return False
     setImaged(n)
-#    rebootNode(n)
+    rebootNode(n)
     return True
 
 def configureLustre(n):
     print(f"Configuring lustre on node {n['name']}")
     if getNodeStatus(n) != "Imaged":
-        print("Node " + n['name'] + " lustre should not be configured. Not in Imaged state")
-        return False
+        print("Node " + n['name'] + " already configured for lustre")
+        return True
 
+#    print(json.dumps(n,indent=4))
     if not checkSsh(n):
         return False
 
@@ -646,25 +651,30 @@ def configureLustre(n):
     setReady(n)
     return True
 
+
 #Main start here
-
-
 initOCI()
+runCmd("mv ~/.ssh/known_hosts ~/.ssh/known_hosts.old 2>/dev/null")
    
 for cn in CLUSTER["nodes"]:
     getConfig()
     if not createInstance(CLUSTER["name"], cn["shape"], cn["name"]):
         print(f"Create instance {cn['name']} failed")
+        sys.exit(0)
     found=False
-    getConfig()
     for n in DeploymentConfig["clusters"][CLUSTER["name"]]["nodes"]:
         if cn["name"] == n["name"]:
-            configureNode(n,cn)
-#            imageNode(n)
-            configureLustre(n)
             found=True
+            if not configureNode(n,cn):
+                sys.exit(1)
+
     if not found:
-        print(f"Instance Node {cn['name']} was not found")
+        print("Instnace " + cn["name"] + " not found in any running instances")
+        sys.exit(1)
 
-
+    for n in DeploymentConfig["clusters"][CLUSTER["name"]]["nodes"]:
+        if not imageNode(n):
+            sys.exit(1)
+        if not configureLustre(n):
+            sys.exit(1)
 
