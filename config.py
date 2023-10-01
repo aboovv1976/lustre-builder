@@ -17,7 +17,7 @@ StorageNetTag="storage"
 DataNetTag="data"
 ImageId="ocid1.image.oc1.iad.aaaaaaaamf35m2qg5krijvq4alf6qmvdqiroq4i5zdwqqdijmstn4ryes36q"
 MGSHostPattern="mgs-server-"
-MDSHostPattern="metdata-server-"
+MDSHostPattern="metadata-server-"
 OSSHostPattern="storage-server-"
 ClientHostPattern="client-"
 DeploymentConfig={}
@@ -30,7 +30,6 @@ ServerLustreVersion="lustre-2.15.3-1.el8.x86_64"
 
 CLUSTER = {
         "name": "xai-phx-1",
-#        "nodes": [ "mgs-server-1", "metadata-server-1", "storage-server-1" ]
         "nodes": [ 
             { 
                 "name": "mgs-server-1",
@@ -39,6 +38,14 @@ CLUSTER = {
                 "vnics": 2,
                 "volumes": 1,
                 "bvSize": 50
+            },
+            { 
+                "name": "metadata-server-1",
+                "shape": "BM.Standard.E4.128",
+                "nic": 0,
+                "vnics": 2,
+                "volumes": 10,
+                "bvSize": 50 
             }
         ]
         
@@ -191,7 +198,7 @@ def getConfig():
     for i in r:
 
         if i.lifecycle_state in [ "TERMINATING", "TERMINATED" ]:
-#            print("Skipping instance not marked in currect state " + name)
+            print("Skipping instance not marked in currect state " + name)
             continue
 
         name=i.display_name
@@ -206,7 +213,7 @@ def getConfig():
                 cluster=vv
 
         if status == None or cluster == None:
-#            print("Skipping instance not marked in any cluster " + name)
+            print("Skipping instance not marked in any cluster " + name)
             continue
 
         if cluster not in DeploymentConfig["clusters"]:
@@ -218,7 +225,7 @@ def getConfig():
         details["name"]=name
         t=getNodeType(details)
         if t == None:
-#            print("Skipping instance not current name pattern " + name)
+            print("Skipping instance doesn't have consistent name pattern " + name)
             continue
         idx=t["idx"]
         t=t["type"]
