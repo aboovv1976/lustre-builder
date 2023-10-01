@@ -32,6 +32,8 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
+dnf -y install oraclelinux-developer-release-el8
+dnf -y install python36-oci-cli
 
 }
 

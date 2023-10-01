@@ -26,8 +26,8 @@ ClientHostPattern="client-"
 DeploymentConfig={}
 OCIConfig=None
 
-ServerKernelVerson="4.18.0-477.10.1.el8_lustre.x86_64"
-ServerLustreVersion="lustre-2.15.3-1.el8.x86_64"
+KernelVersion="4.18.0-477"
+LustreVersion="lustre-2.15.3"
 
 DefaultOSS = {
                 "shape": "BM.Standard3.64",
@@ -70,7 +70,16 @@ CLUSTER = {
             }
             ,
             { 
-                "name": "storage-server-1"
+                "name": "storage-server-4"
+            }
+            ,
+            { 
+                "name": "client-1",
+                "shape": "VM.Standard2.24",
+                "nic": 0,
+                "vnics": 1,
+                "volumes": 0,
+                "bvSize": 50
             }
         ]
         
@@ -143,7 +152,7 @@ def initOCI():
     sh = logging.StreamHandler()
     sh.setFormatter(fmt)
     logger.addHandler(sh)
-    logInfo("Initi complete")
+    logInfo("Init complete")
 
 def getNodeType(n):
     name=n["name"]
@@ -285,6 +294,9 @@ def getConfig():
 
         details["fqdn"]=name + "." + DeploymentConfig["basicConfig"]["storageNet"]["domain"]
         details["domain"]=DeploymentConfig["basicConfig"]["storageNet"]["domain"]
+        if t == "CLIENT":
+            details["fqdn"]=name + "." + DeploymentConfig["basicConfig"]["dataNet"]["domain"]
+            details["domain"]=DeploymentConfig["basicConfig"]["dataNet"]["domain"]
         details["dataDomain"]=DeploymentConfig["basicConfig"]["dataNet"]["domain"]
         details["vcnDomain"]=DeploymentConfig["basicConfig"]["domain"]
         details["idx"]=idx
@@ -306,7 +318,10 @@ def getConfig():
         for x in r.data:
             if x.lifecycle_state == "ATTACHED":
                 if x.subnet_id == DeploymentConfig["basicConfig"]["dataNet"]["id"]:
-                    details["name_a"]=x.display_name
+                    if x.display_name:
+                        details["name_a"]=x.display_name
+                    else:
+                        details["name_a"]=name
                     details["fqdn_a"]=details["name_a"] + "." + DeploymentConfig["basicConfig"]["dataNet"]["domain"]
                 cc+=1
         details["vnics"]=cc
@@ -487,11 +502,15 @@ def createInstance(clusterName, shape, instanceName=None):
 
     if not found:
         logInfo("Creating new instance " + name)
+        subnet_id=DeploymentConfig["basicConfig"]["storageNet"]["id"]
+        t=getNodeType( { "name": name })
+        if t and t["type"] == "CLIENT":
+            sid=DeploymentConfig["basicConfig"]["dataNet"]["id"]
         vnicDetails=oci.core.models.CreateVnicDetails(
                 assign_private_dns_record=True,
                 display_name=name,
                 hostname_label=name,
-                subnet_id=DeploymentConfig["basicConfig"]["storageNet"]["id"]
+                subnet_id=sid
                 )
 
         sourceDetails=oci.core.models.InstanceSourceViaImageDetails(
@@ -538,7 +557,10 @@ def createInstance(clusterName, shape, instanceName=None):
 
 def getLustre(n):
     host=n["fqdn"]
-    r=runRemoteCmd(host,"rpm -qa |grep ^lustre-2")
+    rpm="lustre-2"
+    if n["type"] == "CLIENT" :
+        rpm="lustre-client-2"
+    r=runRemoteCmd(host,f"rpm -qa |grep ^{rpm}")
     if r["status"] == 0:
         return r["output"].strip()
     else:
@@ -650,7 +672,7 @@ def imageNode(n):
     script="image_server.sh"
     t=getNodeType(n)
     if t and t["type"] == "CLIENT":
-        scipt="install_client.sh"
+        script="image_client.sh"
     if not runScript(n,script) :
         return False
     setImaged(n)
@@ -668,14 +690,14 @@ def configureLustre(n):
 
     v1=getKernel(n)
     v2=getLustre(n)
-    logDebug("Kernel version:" + v1)
-    logDebug("Lustre version:" + v2)
-    if ( v1 != ServerKernelVerson ):
+    logInfo(f"{n['name']}: Kernel version:" + v1)
+    logInfo(f"{n['name']}: Lustre version:" + v2)
+    if ( v1[:len(KernelVersion)] != KernelVersion ):
         logCritical(f"Node {n['name']} is not running currect kernel version")
         return False
-    if ( v2 != ServerLustreVersion ):
-        logCritical(f"Node {n['name']} is not running currect lustre version")
-        return False
+#    if ( v2[:len(LustreVersion)] != LustreVersion ):
+#        logCritical(f"Node {n['name']} is not running currect lustre version")
+#        return False
 
     if not iSCSIConfig(n):
         logCritical(f"Configuring iSCSI devices on node {n['name']} failed")
