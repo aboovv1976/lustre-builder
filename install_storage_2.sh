@@ -37,7 +37,6 @@ do
    retry=`expr $retry + 1`
    if [ "$retry" -ge "12" ]
    then
-           FAILED=1
 	   exit 1
    fi
 done
@@ -48,6 +47,7 @@ function enable_lnet_at_boot_time {
   # Update lnet service to start with correct config and enable at boot time
   lnet_service_config="/usr/lib/systemd/system/lnet.service"
   cp $lnet_service_config $lnet_service_config.backup
+  sed -i 's/^ExecStart=\/usr\/sbin\/lnetctl net add --net.*//g' $lnet_service_config
   search_string="ExecStart=/usr/sbin/lnetctl import /etc/lnet.conf"
   nic_add="ExecStart=/usr/sbin/lnetctl net add --net tcp1 --if $interface  –peer-timeout 180 –peer-credits 128 –credits 1024"
 
@@ -73,8 +73,6 @@ else
 fi
 mount_point="/oss${num}_ost${index}_${disk_type}_mount"
 
-
-
   # Add logic to ensure the below is not empty
     cmd=`nslookup ${mgs_fqdn_hostname_nic1} | grep -qi "Name:"`
     while [ $? -ne 0 ];
@@ -83,9 +81,6 @@ mount_point="/oss${num}_ost${index}_${disk_type}_mount"
       sleep 10s
       cmd=`nslookup ${mgs_fqdn_hostname_nic1} | grep -qi "Name:"`
     done
-
-
-
 
 mgs_ip=`nslookup ${mgs_fqdn_hostname_nic1} | grep "Address: " | gawk '{ print $2 }'` ; echo $mgs_ip
 if [ -z $mgs_ip ]; then
@@ -97,7 +92,7 @@ mgs_pri_nid=$mgs_ip@tcp1 ;  echo $mgs_pri_nid
 
 mkfs.lustre --ost --fsname=$fsname --index=$index --mgsnode=${mgs_ip}@tcp1 $mount_device
 mkdir -p $mount_point
-mount -t lustre $mount_device $mount_point
+mount -t lustre $mount_device $mount_point || FAILED=1
 
 ## Update fstab
 cp /etc/fstab /etc/fstab.backup
@@ -123,7 +118,7 @@ privateIp=`curl -s http://169.254.169.254/opc/v1/vnics/ | jq '.[1].privateIp ' |
 [[ -n "$privateIp" ]] && configure_vnics
 [[ -z "$privateIp" ]] && privateIp=`curl -s http://169.254.169.254/opc/v1/vnics/ | jq '.[0].privateIp ' | sed 's/"//g' ` ;
 interface=`ip addr |egrep "inet $privateIp|BROADCAST" | grep -B 1 "inet $privateIp" | grep BROADCAST | cut -f2 -d:`
-lnetctl net add --net tcp1 --if $interface  –peer-timeout 180 –peer-credits 128 –credits 1024
+lnetctl net add --net tcp1 --if $interface  –peer-timeout 180 –peer-credits 128 –credits 1024 || FAILED=1
 
 num=`hostname | gawk -F"." '{ print $1 }' | gawk -F"-"  'NF>1&&$0=$(NF)'`
 hostname
@@ -183,6 +178,11 @@ df -h
 # function call
 enable_lnet_at_boot_time
 
+
+if [ "$FAILED" -eq "1" ]
+then
+    exit 1
+fi
 
 echo "setup complete"
 exit 0;

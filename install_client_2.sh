@@ -6,6 +6,7 @@ function enable_lnet_at_boot_time {
   # Update lnet service to start with correct config and enable at boot time
   lnet_service_config="/usr/lib/systemd/system/lnet.service"
   cp $lnet_service_config $lnet_service_config.backup
+  sed -i 's/^ExecStart=\/usr\/sbin\/lnetctl net add --net.*//g' $lnet_service_config
   search_string="ExecStart=/usr/sbin/lnetctl import /etc/lnet.conf"
   nic_add="ExecStart=/usr/sbin/lnetctl net add --net tcp1 --if $interface  –peer-timeout 180 –peer-credits 128 –credits 1024"
 
@@ -52,7 +53,7 @@ lnetctl net show
 privateIp=`curl -s http://169.254.169.254/opc/v1/vnics/ | jq '.[0].privateIp ' | sed 's/"//g' ` ; echo $privateIp
 interface=`ip addr |egrep "inet $privateIp|BROADCAST" | grep -B 1 "inet $privateIp" | grep BROADCAST | cut -f2 -d:`
 
-lnetctl net add --net tcp1 --if $interface  –peer-timeout 180 –peer-credits 128 –credits 1024
+lnetctl net add --net tcp1 --if $interface  –peer-timeout 180 –peer-credits 128 –credits 1024 | FAILED=1
 
 lnetctl net show --net tcp > tcp.yaml
 lnetctl  import --del tcp.yaml
@@ -87,7 +88,7 @@ fi
 function mount_lustrefs() {
     echo "sleep - 100s"
     sleep 100s
-    mount -t lustre ${mgs_ip}@tcp1:/$fsname $mount_point
+    mount -t lustre ${mgs_ip}@tcp1:/$fsname $mount_point || FAILED=1
 }
 
 
@@ -110,6 +111,11 @@ df -h
 # function call
 enable_lnet_at_boot_time
 
+
+if [ "$FAILED" -eq "1" ]
+then
+    exit 1
+fi
 
 echo "complete"
 

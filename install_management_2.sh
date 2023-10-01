@@ -39,7 +39,6 @@ do
    if [ "$retry" -ge "11" ]
    then
            FAILED=1
-	   exit 1
    fi
 done
 
@@ -49,6 +48,7 @@ function enable_lnet_at_boot_time {
   # Update lnet service to start with correct config and enable at boot time
   lnet_service_config="/usr/lib/systemd/system/lnet.service"
   cp $lnet_service_config $lnet_service_config.backup
+  sed -i 's/^ExecStart=\/usr\/sbin\/lnetctl net add --net.*//g' $lnet_service_config
   search_string="ExecStart=/usr/sbin/lnetctl import /etc/lnet.conf"
   nic_add="ExecStart=/usr/sbin/lnetctl net add --net tcp1 --if $interface  –peer-timeout 180 –peer-credits 128 –credits 1024"
 
@@ -92,7 +92,7 @@ function disk_mount {
   lctl network up
   lctl list_nids
   mkdir -p $mount_point
-  mount -t lustre $mount_device $mount_point
+  mount -t lustre $mount_device $mount_point || FAILED=1
 
   ## Update fstab
   echo "$mount_device               $mount_point           lustre  defaults,_netdev        0 0" >> /etc/fstab
@@ -117,7 +117,7 @@ privateIp=`curl -s http://169.254.169.254/opc/v1/vnics/ | jq '.[1].privateIp ' |
 interface=`ip addr |egrep "inet $privateIp|BROADCAST" | grep -B 1 "inet $privateIp" | grep BROADCAST | cut -f2 -d:`
 
 # Configure lnet network
-lnetctl net add --net tcp1 --if $interface  –peer-timeout 180 –peer-credits 128 –credits 1024
+lnetctl net add --net tcp1 --if $interface  –peer-timeout 180 –peer-credits 128 –credits 1024 || FAILED=1
 
 
 num=`hostname | gawk -F"." '{ print $1 }' | gawk -F"-"  'NF>1&&$0=$(NF)'`
@@ -176,4 +176,9 @@ df -h
 enable_lnet_at_boot_time
 
 echo "setup complete"
+if [ "$FAILED" -eq "1" ]
+then
+    exit 1
+fi
+
 exit 0;
