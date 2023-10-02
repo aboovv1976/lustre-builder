@@ -65,12 +65,12 @@ function enable_lnet_at_boot_time {
 disk_mount () {
 
 
+  if [ -n "$2" ]; then
+    fsname=$2
+  else
+    fsname=lfs-oci
+  fi
 
-if [ $disk_type = "nvme" ]; then
-  fsname=lfsnvme
-else
-  fsname=lfsbv
-fi
 mount_point="/oss${num}_ost${index}_${disk_type}_mount"
 
   # Add logic to ensure the below is not empty

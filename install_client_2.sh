@@ -76,14 +76,11 @@ if [ -z $mgs_ip ]; then
 fi
 
 
-# Scratch or Persistent
-if [ "$fs_type" == "Scratch" ]; then
-  disk_type=nvme
-  fsname=lfsnvme
-else
-  disk_type=bv
-  fsname=lfsbv
-fi
+  if [ -n "$2" ]; then
+    fsname=$2
+  else
+    fsname=lfs-oci
+  fi
 
 function mount_lustrefs() {
     echo "sleep - 100s"

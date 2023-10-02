@@ -13,7 +13,7 @@ import json
 import os
 import logging
 
-LOGLEVEL=logging.INFO
+LOGLEVEL=logging.DEBUG
 
 PublicNetTag="public"
 StorageNetTag="storage"
@@ -31,57 +31,39 @@ LustreVersion="lustre-2.15.3"
 
 
 DefaultOSS = {
-                "shape": "BM.Standard3.64",
+                "shape": "BM.DenseIO.E5.128",
                 "nic": 1,
                 "vnics": 2,
-                "volumes": 1,
-                "bvSize": 5000 
+                "volumes": 0,
+                "bvSize": 50 
         }
 
 CLUSTER = {
-        "name": "xai-phx-1",
+        "name": "xai-phx-2",
         "nodes": [ 
             { 
                 "name": "mgs-server-1",
-                "shape": "VM.Standard2.2",
+                "shape": "VM.Standard2.8",
                 "nic": 0,
                 "vnics": 2,
                 "volumes": 1,
                 "bvSize": 50
-            },
-            { 
-                "name": "metadata-server-1",
-                "shape": "BM.Standard.E4.128",
-                "nic": 1,
-                "vnics": 2,
-                "volumes": 10,
-                "bvSize": 50 
-            },
-            { 
-                "name": "storage-server-3",
-                "shape": "BM.Standard3.64",
-                "nic": 1,
-                "vnics": 2,
-                "volumes": 1,
-                "bvSize": 5000 
-            }
-            ,
-            { 
-                "name": "storage-server-1"
-            }
-            ,
-            { 
-                "name": "storage-server-4"
-            }
-            ,
-            { 
-                "name": "client-1",
-                "shape": "VM.Standard2.24",
-                "nic": 0,
-                "vnics": 1,
-                "volumes": 0,
-                "bvSize": 50
-            }
+            } #,
+#            { 
+#                "name": "metadata-server-1",
+#                "shape": "BM.Standard.E4.128",
+#                "nic": 1,
+#                "vnics": 2,
+#                "volumes": 2,
+#                "bvSize": 100 
+#            },
+#            { 
+#                "name": "storage-server-1"
+#            }
+#            ,
+#            { 
+#                "name": "storage-server-2"
+#            }
         ]
         
 }
@@ -323,11 +305,10 @@ def getConfig():
                 )
 
         cc=0
-        notInVcn=False
+        found=False
         for x in r.data:
-            if x.vcn_id != basicConfig["vcn"]:
-                notInVcn=True
-                break
+            if x.subnet_id == DeploymentConfig["basicConfig"]["storageNet"]["id"]:
+                found=True
             if x.lifecycle_state == "ATTACHED":
                 if x.subnet_id == DeploymentConfig["basicConfig"]["dataNet"]["id"]:
                     if x.display_name:
@@ -336,9 +317,10 @@ def getConfig():
                         details["name_a"]=name
                     details["fqdn_a"]=details["name_a"] + "." + DeploymentConfig["basicConfig"]["dataNet"]["domain"]
                 cc+=1
-        if notInVcn:
-            logDebug(f"Skipping instance {i.display_name} not in VCN")
+        if not found:
+            logDebug(f"Skipping instance {i.display_name} not in subnet")
             continue
+
         details["vnics"]=cc
         if "name_a" not in details:
             details["name_a"]=name
@@ -510,14 +492,14 @@ def createInstance(clusterName, shape, instanceName=None):
                 compartment_id=DeploymentConfig["basicConfig"]["compartmentId"],
                 instance_id=i.id
                 )
-        notInVcn=False
+        found=False
         for x in vr.data:
-            if x.vcn_id != DeploymentConfig["basicConfig"]["vcn"]:
-                notInVcn=True
+            if x.subnet_id == DeploymentConfig["basicConfig"]["storageNet"]["id"]:
+                found=True
                 break
 
-        if notInVcn:
-            logDebug(f"Skipping instance {i.display_name} not in VCN")
+        if not found:
+            logDebug(f"Skipping instance {i.display_name} not in subnet")
             continue
 
         if i.display_name == name:
@@ -532,7 +514,7 @@ def createInstance(clusterName, shape, instanceName=None):
 
     if not found:
         logInfo("Creating new instance " + name)
-        subnet_id=DeploymentConfig["basicConfig"]["storageNet"]["id"]
+        sid=DeploymentConfig["basicConfig"]["storageNet"]["id"]
         t=getNodeType( { "name": name })
         if t and t["type"] == "CLIENT":
             sid=DeploymentConfig["basicConfig"]["dataNet"]["id"]
@@ -755,7 +737,7 @@ def configureLustre(n):
     if "mgs" not in DeploymentConfig["clusters"][n["cluster"]] :
         logCritical("Unable to find MGS for cluster " + DeploymentConfig["clusters"][n["cluster"]])
         return False
-    if not runScript(n,script,DeploymentConfig["clusters"][n["cluster"]]["mgs"]):
+    if not runScript(n,script,f"{DeploymentConfig['clusters'][n['cluster']]['mgs']} {n['cluster']}"):
         return False
 
     setReady(n)
@@ -775,12 +757,13 @@ for cn in CLUSTER["nodes"]:
 
     getConfig()
     finished=False
-    for n in DeploymentConfig["clusters"][CLUSTER["name"]]["nodes"]:
-        if cn["name"] == n["name"]:
-            if n["status"] == "Ready":
-                finished=True
-                logInfo(f"Node {n['name']} is already in Ready state")
-                break
+    if CLUSTER["name"] in DeploymentConfig["clusters"] :
+        for n in DeploymentConfig["clusters"][CLUSTER["name"]]["nodes"]:
+            if cn["name"] == n["name"]:
+                if n["status"] == "Ready":
+                    finished=True
+                    logInfo(f"Node {n['name']} is already in Ready state")
+                    break
 
     if finished:
         continue
@@ -789,6 +772,7 @@ for cn in CLUSTER["nodes"]:
         logCritical(f"Create instance {cn['name']} failed")
         continue
 
+#    print(DeploymentConfig)
     found=False
     failed=False
     for n in DeploymentConfig["clusters"][CLUSTER["name"]]["nodes"]:
