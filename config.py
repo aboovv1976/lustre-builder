@@ -759,7 +759,6 @@ for cn in CLUSTER["nodes"]:
 
     getConfig()
 
-    sys.exit(0)
 
     finished=False
     if CLUSTER["name"] in DeploymentConfig["clusters"] :
