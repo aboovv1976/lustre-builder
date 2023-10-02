@@ -65,8 +65,8 @@ function enable_lnet_at_boot_time {
 # function
 function disk_mount {
 
-  if [ -n "$2" ]; then
-    fsname=$2
+  if [ -n "$1" ]; then
+    fsname=$1
   else
     fsname=lfs-oci
   fi
@@ -138,7 +138,7 @@ for disk in `ls /dev/ | grep nvme | grep n1`; do
   index=$((((((num-1))*total_disk_count))+(dcount)))
   echo $index
   dcount=$((dcount+1))
-  disk_mount 
+  disk_mount $2
 done;
 
 echo "$dcount $disk_type disk found"
@@ -160,7 +160,7 @@ for disk in `cat /proc/partitions | grep -ivw 'sda' | grep -ivw 'sda[1-3]' | gre
   drive_letter=`echo $disk | sed 's/sd//'`
   drive_variables="${drive_variables}${drive_letter}"
   dcount=$((dcount+1))
-  disk_mount
+  disk_mount $2
 done;
 
 echo "$dcount $disk_type disk found"
