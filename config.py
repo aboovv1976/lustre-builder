@@ -70,10 +70,10 @@ CLUSTER = {
 
 #SERVERS = ["storage-server-1","storage-server-4","storage-server-7","storage-server-8","storage-server-9","storage-server-10","storage-server-12","storage-server-15","storage-server-16","storage-server-17","storage-server-19","storage-server-20","storage-server-21","storage-server-22","storage-server-23","storage-server-24","storage-server-25","storage-server-26"]
 
-SERVERS = ["storage-server-1","storage-server-4","storage-server-7" ]
+#SERVERS = ["storage-server-1","storage-server-4","storage-server-7" ]
 
-for s in SERVERS:
-    CLUSTER["nodes"].append( { "name": s })
+#for s in SERVERS:
+#    CLUSTER["nodes"].append( { "name": s })
 
 logger=None
 
