@@ -29,6 +29,7 @@ OCIConfig=None
 KernelVersion="4.18.0-477"
 LustreVersion="lustre-2.15.3"
 
+
 DefaultOSS = {
                 "shape": "BM.Standard3.64",
                 "nic": 1,
@@ -84,6 +85,13 @@ CLUSTER = {
         ]
         
 }
+
+#SERVERS = ["storage-server-1","storage-server-4","storage-server-7","storage-server-8","storage-server-9","storage-server-10","storage-server-12","storage-server-15","storage-server-16","storage-server-17","storage-server-19","storage-server-20","storage-server-21","storage-server-22","storage-server-23","storage-server-24","storage-server-25","storage-server-26"]
+
+SERVERS = ["storage-server-1","storage-server-4","storage-server-7" ]
+
+for s in SERVERS:
+    CLUSTER["nodes"].append( { "name": s })
 
 logger=None
 
@@ -315,7 +323,11 @@ def getConfig():
                 )
 
         cc=0
+        notInVcn=False
         for x in r.data:
+            if x.vcn_id != basicConfig["vcn"]:
+                notInVcn=True
+                break
             if x.lifecycle_state == "ATTACHED":
                 if x.subnet_id == DeploymentConfig["basicConfig"]["dataNet"]["id"]:
                     if x.display_name:
@@ -324,6 +336,9 @@ def getConfig():
                         details["name_a"]=name
                     details["fqdn_a"]=details["name_a"] + "." + DeploymentConfig["basicConfig"]["dataNet"]["domain"]
                 cc+=1
+        if notInVcn:
+            logDebug(f"Skipping instance {i.display_name} not in VCN")
+            continue
         details["vnics"]=cc
         if "name_a" not in details:
             details["name_a"]=name
@@ -490,6 +505,21 @@ def createInstance(clusterName, shape, instanceName=None):
 
     found=False
     for i in r:
+        vr=oci.pagination.list_call_get_all_results(
+                instanceClient.list_vnic_attachments,
+                compartment_id=DeploymentConfig["basicConfig"]["compartmentId"],
+                instance_id=i.id
+                )
+        notInVcn=False
+        for x in vr.data:
+            if x.vcn_id != DeploymentConfig["basicConfig"]["vcn"]:
+                notInVcn=True
+                break
+
+        if notInVcn:
+            logDebug(f"Skipping instance {i.display_name} not in VCN")
+            continue
+
         if i.display_name == name:
             if i.lifecycle_state in [ "RUNNING", "STARTING" ]:
                 logDebug("Found instance " + name)
