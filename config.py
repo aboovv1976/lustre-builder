@@ -48,18 +48,19 @@ CLUSTER = {
                 "vnics": 2,
                 "volumes": 1,
                 "bvSize": 50
-            } #,
-#            { 
-#                "name": "metadata-server-1",
-#                "shape": "BM.Standard.E4.128",
-#                "nic": 1,
-#                "vnics": 2,
-#                "volumes": 2,
-#                "bvSize": 100 
-#            },
-#            { 
-#                "name": "storage-server-1"
-#            }
+            },
+            { 
+                "name": "metadata-server-1",
+                "shape": "BM.Standard.E4.128",
+                "nic": 1,
+                "vnics": 2,
+                "volumes": 2,
+                "bvSize": 100 
+            }
+            ,
+            { 
+                "name": "storage-server-1"
+            }
 #            ,
 #            { 
 #                "name": "storage-server-2"
@@ -70,7 +71,7 @@ CLUSTER = {
 
 #SERVERS = ["storage-server-1","storage-server-4","storage-server-7","storage-server-8","storage-server-9","storage-server-10","storage-server-12","storage-server-15","storage-server-16","storage-server-17","storage-server-19","storage-server-20","storage-server-21","storage-server-22","storage-server-23","storage-server-24","storage-server-25","storage-server-26"]
 
-#SERVERS = ["storage-server-1","storage-server-4","storage-server-7" ]
+#SERVERS = ["storage-server-1" ]
 
 #for s in SERVERS:
 #    CLUSTER["nodes"].append( { "name": s })
@@ -492,13 +493,13 @@ def createInstance(clusterName, shape, instanceName=None):
                 compartment_id=DeploymentConfig["basicConfig"]["compartmentId"],
                 instance_id=i.id
                 )
-        found=False
+        inSubnet=False
         for x in vr.data:
             if x.subnet_id == DeploymentConfig["basicConfig"]["storageNet"]["id"]:
-                found=True
+                inSubnet=True
                 break
 
-        if not found:
+        if not inSubnet:
             logDebug(f"Skipping instance {i.display_name} not in subnet")
             continue
 
