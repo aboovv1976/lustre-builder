@@ -33,39 +33,39 @@ LustreVersion="lustre-2.15.3"
 DefaultOSS = {
                 "shape": "BM.DenseIO.E5.128",
                 "nic": 0,
-                "vnics": 1,
+                "vnics": 2,
                 "volumes": 0,
                 "bvSize": 50 
         }
 
 CLUSTER = {
-        "name": "xai-phx-2",
+        "name": "xai-lc1",
         "nodes": [ 
             { 
                 "name": "mgs-server-1",
                 "shape": "VM.Standard2.8",
                 "nic": 0,
-                "vnics": 1,
+                "vnics": 2,
                 "volumes": 1,
                 "bvSize": 50
             }
-#            ,
-#            { 
-#                "name": "metadata-server-1",
-#                "shape": "BM.Standard.E4.128",
-#                "nic": 0,
-#                "vnics": 1,
-#                "volumes": 2,
-#                "bvSize": 100 
-#            }
-#            ,
-#            { 
-#                "name": "storage-server-1"
-#            }
-#            ,
-#            { 
-#                "name": "storage-server-2"
-#            }
+            ,
+            { 
+                "name": "metadata-server-1",
+                "shape": "BM.Standard.E4.128",
+                "nic": 0,
+                "vnics": 2,
+                "volumes": 2,
+                "bvSize": 100 
+            }
+            ,
+            { 
+                "name": "storage-server-1"
+            }
+            ,
+            { 
+                "name": "storage-server-2"
+            }
         ]
         
 }
