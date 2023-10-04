@@ -83,24 +83,30 @@ fi
   fi
 
 function mount_lustrefs() {
-    echo "sleep - 100s"
-    sleep 100s
-    mount -t lustre ${mgs_ip}@tcp1:/$fsname $mount_point || FAILED=1
+#    echo "sleep - 100s"
+#    sleep 100s
+    mounted_fs=`df -k | grep "^${mgs_ip}@tcp1:/$fsname "`
+    if [ -z "$mounted_fs" ]
+    then
+	    exit 0
+	    echo
+        mount -t lustre ${mgs_ip}@tcp1:/$fsname $mount_point || FAILED=1
+    fi
 }
 
 
 mount_point=/mnt/fs
 mkdir -p $mount_point
 mount_lustrefs
-while [ $? -ne 0 ]; do
-    mount_lustrefs
-done
 
 ## Update fstab
-cp /etc/fstab /etc/fstab.backup
-echo "${mgs_ip}@tcp1:/$fsname  $mount_point lustre defaults,_netdev,x-systemd.automount,x-systemd.requires=lnet.service 0 0" >> /etc/fstab
-
-sudo chown -R opc:opc $mount_point
+fstab_fs=`grep "^${mgs_ip}@tcp1:/$fsname " /etc/fstab`
+if [ -z "$fstab_fs" ]
+then
+    cp /etc/fstab /etc/fstab.backup
+    echo "${mgs_ip}@tcp1:/$fsname  $mount_point lustre defaults,_netdev,x-systemd.automount,x-systemd.requires=lnet.service 0 0" >> /etc/fstab
+#    sudo chown -R opc:opc $mount_point
+fi
 
 df -h
 

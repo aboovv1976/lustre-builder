@@ -63,8 +63,34 @@ CLUSTER = {
                 "name": "storage-server-1"
             }
             ,
+#            { 
+#                "name": "storage-server-2"
+#            }
+#            ,
+#            { 
+#                "name": "storage-server-3"
+#            }
+#            ,
+#            { 
+#                "name": "storage-server-4"
+#            }
+#            ,
             { 
-                "name": "storage-server-2"
+                "name": "client-1",
+                "shape": "VM.Standard2.24",
+                "nic": 0,
+                "vnics": 1,
+                "volumes": 0,
+                "bvSize": 100 
+            }
+#            ,
+#            { 
+#                "name": "client-2",
+#                "shape": "VM.Standard2.24",
+#                "nic": 0,
+#                "vnics": 1,
+#                "volumes": 0,
+#                "bvSize": 100 
             }
         ]
         
@@ -309,7 +335,7 @@ def getConfig():
         cc=0
         found=False
         for x in r.data:
-            if x.subnet_id == DeploymentConfig["basicConfig"]["storageNet"]["id"]:
+            if x.subnet_id in [ DeploymentConfig["basicConfig"]["storageNet"]["id"], DeploymentConfig["basicConfig"]["dataNet"]["id"] ]:
                 found=True
             if x.lifecycle_state == "ATTACHED":
                 if x.subnet_id == DeploymentConfig["basicConfig"]["dataNet"]["id"]:
@@ -425,7 +451,7 @@ def createAndAttachBV(displayName,ad, compartmentId, size, instanceId):
         bvClient.get_volume(r.data.id),
         'lifecycle_state',
         'AVAILABLE',
-        max_wait_seconds=300
+        max_wait_seconds=600
         )
 
     if r and r.status/100 == 2:
@@ -496,7 +522,7 @@ def createInstance(clusterName, shape, instanceName=None):
                 )
         inSubnet=False
         for x in vr.data:
-            if x.subnet_id == DeploymentConfig["basicConfig"]["storageNet"]["id"]:
+            if x.subnet_id in [ DeploymentConfig["basicConfig"]["storageNet"]["id"] , DeploymentConfig["basicConfig"]["dataNet"]["id"] ] :
                 inSubnet=True
                 break
 
@@ -559,7 +585,7 @@ def createInstance(clusterName, shape, instanceName=None):
         instanceClient.get_instance(r.id),
         'lifecycle_state',
         'RUNNING',
-        max_wait_seconds=300
+        max_wait_seconds=600
         )
 
     if getNodeStatus( { "id": r.id } ) == "Unknown":

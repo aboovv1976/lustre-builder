@@ -96,16 +96,22 @@ fi
 
 
 mgs_pri_nid=$mgs_ip@tcp1 ;  echo $mgs_pri_nid
-mkfs.lustre --fsname=$fsname --index=$index  --mdt $mount_device   --mgsnode $mgs_pri_nid
+  mounted_fs=`df -k | grep "^$mount_device "`
+  if [ -z "$mounted_fs" ]
+  then
+      mkfs.lustre --fsname=$fsname --index=$index  --mdt $mount_device   --mgsnode $mgs_pri_nid
+      lctl network up
+      lctl list_nids
+      mkdir -p $mount_point
+      mount -t lustre $mount_device $mount_point || FAILED=1
+  fi
 
-
-lctl network up
-lctl list_nids
-mkdir -p $mount_point
-mount -t lustre $mount_device $mount_point || FAILED=1
-
-## Update fstab
-echo "$mount_device               $mount_point           lustre  defaults,_netdev        0 0" >> /etc/fstab
+  ## Update fstab
+  fstab_fs=`grep "^$mount_device " /etc/fstab`
+  if [ -z "$fstab_fs" ]
+  then
+     echo "$mount_device               $mount_point           lustre  defaults,_netdev        0 0" >> /etc/fstab
+  fi
 
 }
 
