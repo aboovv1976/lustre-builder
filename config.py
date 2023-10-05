@@ -34,12 +34,12 @@ DefaultOSS = {
                 "shape": "BM.DenseIO.E5.128",
                 "nic": 0,
                 "vnics": 2,
-                "volumes": 0,
-                "bvSize": 50 
+                "volumes": 12,
+                "bvSize": 1024
         }
 
 CLUSTER = {
-        "name": "xai-lc1",
+        "name": "xai1",
         "nodes": [ 
             { 
                 "name": "mgs-server-1",
@@ -55,7 +55,7 @@ CLUSTER = {
                 "shape": "BM.Standard.E4.128",
                 "nic": 0,
                 "vnics": 2,
-                "volumes": 2,
+                "volumes": 1,
                 "bvSize": 100 
             }
             ,
@@ -63,10 +63,16 @@ CLUSTER = {
                 "name": "storage-server-1"
             }
             ,
-#            { 
-#                "name": "storage-server-2"
-#            }
-#            ,
+            { 
+                "name": "storage-server-2"
+            },
+            { 
+                "name": "storage-server-3"
+            },
+            { 
+                "name": "storage-server-4"
+            }
+            ,
 #            { 
 #                "name": "storage-server-3"
 #            }
@@ -91,7 +97,7 @@ CLUSTER = {
 #                "vnics": 1,
 #                "volumes": 0,
 #                "bvSize": 100 
-            }
+#            }
         ]
         
 }
@@ -252,7 +258,7 @@ def getConfig():
                 DeploymentConfig["clusters"][vv]["nodes"]=[]
 
     if not public:
-        logCritcal(f"Public subnet not found in vcn id {vcn}")
+        logCritical(f"Public subnet not found in vcn id {vcn}")
         error=True
     if not storage:
         logCritical(f"Storage subnet not found in vcn id {vcn}")
@@ -277,11 +283,12 @@ def getConfig():
     nodes=[]
     for i in r:
 
+        name=i.display_name
+
         if i.lifecycle_state in [ "TERMINATING", "TERMINATED" ]:
             logDebug("Skipping instance not marked in currect state " + name)
             continue
 
-        name=i.display_name
         status=None
         cluster=None
         for k in i.freeform_tags:
@@ -396,15 +403,20 @@ def attachVnic(instanceId, displayName,subnetId, nicIndex):
 
     instanceClient = oci.core.ComputeClient(OCIConfig)
     r=instanceClient.attach_vnic(attach_vnic_details=attachDetails)
-    if r and r.status/100 == 2:
-        oci.wait_until(
-            instanceClient,
-            instanceClient.get_vnic_attachment(r.data.id),
-            'lifecycle_state',
-            'ATTACHED'
-            )
+    cc=0
+    status=409
+    while cc < 5 and status == 409:
+        if r and r.status/100 == 2:
+            oci.wait_until(
+                instanceClient,
+                instanceClient.get_vnic_attachment(r.data.id),
+                'lifecycle_state',
+                'ATTACHED'
+                )
+            return True
+        status=r.status
+        cc+=1
 
-        return True
 
     logCritical("Attach vnic failed")
     return None
@@ -420,15 +432,20 @@ def attachBV(displayName, instanceId, attType, volumeId):
             volume_id=volumeId
             )
 
-    r=instanceClient.attach_volume(attach_volume_details=attachDetails)
-    if r and r.status/100 == 2:
-        oci.wait_until(
-            instanceClient,
-            instanceClient.get_volume_attachment(r.data.id),
-            'lifecycle_state',
-            'ATTACHED'
-            )
-        return r.data
+    cc=0
+    status=409
+    while cc < 5 and status == 409:
+        r=instanceClient.attach_volume(attach_volume_details=attachDetails)
+        if r and r.status/100 == 2:
+            oci.wait_until(
+                instanceClient,
+                instanceClient.get_volume_attachment(r.data.id),
+                'lifecycle_state',
+                'ATTACHED'
+                )
+            return r.data
+        status=r.status
+        cc+=1
 
     logCritical("Volume attach failed")
     return False
