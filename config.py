@@ -40,7 +40,7 @@ DefaultOSS = {
         }
 
 CLUSTER = {
-        "name": "xai1",
+        "name": "lstr1",
         # The names of the server actually desides what class they are:
         # For example: msg-server-1 is the first MGS server.
         # storage-server-10 is the 10th OSS server.
