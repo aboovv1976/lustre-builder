@@ -40,7 +40,7 @@ DefaultOSS = {
         }
 
 CLUSTER = {
-        "name": "lstr1",
+        "name": "xai1",
         # The names of the server actually desides what class they are:
         # For example: msg-server-1 is the first MGS server.
         # storage-server-10 is the 10th OSS server.
@@ -85,6 +85,7 @@ CLUSTER = {
                 "volumes": 0,
                 "bvSize": 100 
             }
+            #, Add more servers here for extending, and re-run the script. 
         ]
         
 }
@@ -849,4 +850,4 @@ for cn in CLUSTER["nodes"]:
 
     if failed:
         continue
-    print(DeploymentConfig)
+print(json.dumps(DeploymentConfig, indent=4))
