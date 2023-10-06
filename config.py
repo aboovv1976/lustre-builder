@@ -44,6 +44,8 @@ CLUSTER = {
         # The names of the server actually desides what class they are:
         # For example: msg-server-1 is the first MGS server.
         # storage-server-10 is the 10th OSS server.
+        # Also, do not name unrelated servers in the lustre subnet with this naming convention.
+        # This script will pick them try to do something with them (to be changed)
         "nodes": [ 
             { 
                 "name": "mgs-server-1",  # These names are standard names and must follow these format. 
