@@ -13,7 +13,8 @@ import json
 import os
 import logging
 
-LOGLEVEL=logging.DEBUG
+# Change this to INFO, DEBUG, ERROR, etc as desired. Change to DEBUG for debug
+LOGLEVEL=logging.INFO
 
 PublicNetTag="public"
 StorageNetTag="storage"
@@ -30,7 +31,8 @@ KernelVersion="4.18.0-477"
 LustreVersion="lustre-2.15.3"
 
 DefaultOSS = {
-                "shape": "BM.DenseIO.E5.128",
+        # Default template for OSS. To make it easy as there could be many OSS being deployed. 
+                "shape": "VM.Standard2.4",
                 "nic": 0,
                 "vnics": 2,
                 "volumes": 12,
@@ -39,19 +41,24 @@ DefaultOSS = {
 
 CLUSTER = {
         "name": "xai1",
+        # The names of the server actually desides what class they are:
+        # For example: msg-server-1 is the first MGS server.
+        # storage-server-10 is the 10th OSS server.
         "nodes": [ 
             { 
-                "name": "mgs-server-1",
-                "shape": "VM.Standard2.8",
-                "nic": 0,
-                "vnics": 2,
-                "volumes": 1,
-                "bvSize": 50
+                "name": "mgs-server-1",  # These names are standard names and must follow these format. 
+                                         # Only the last index can be chaned. 
+                "shape": "VM.Standard2.2", 
+                "nic": 0, # Physical index where the second(data) NIC to be created. 
+                          # For VM this is always 0.
+                "vnics": 2, # How many vnics
+                "volumes": 1, # How many block volumes. 
+                "bvSize": 50 # BV size in GB
             }
             ,
             { 
                 "name": "metadata-server-1",
-                "shape": "BM.Standard.E4.128",
+                "shape": "VM.Standard2.4",
                 "nic": 0,
                 "vnics": 2,
                 "volumes": 1,
@@ -70,7 +77,7 @@ CLUSTER = {
             ,
             { 
                 "name": "client-1",
-                "shape": "VM.Standard2.24",
+                "shape": "VM.Standard2.1",
                 "nic": 0,
                 "vnics": 1,
                 "volumes": 0,
@@ -79,10 +86,6 @@ CLUSTER = {
         ]
         
 }
-
-#SERVERS = ["storage-server-1","storage-server-4","storage-server-7","storage-server-8","storage-server-9","storage-server-10","storage-server-12","storage-server-15","storage-server-16","storage-server-17","storage-server-19","storage-server-20","storage-server-21","storage-server-22","storage-server-23","storage-server-24","storage-server-25","storage-server-26"]
-
-#SERVERS = ["storage-server-1" ]
 
 #for s in range(1,25):
 #    dd= {
