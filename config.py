@@ -29,7 +29,6 @@ OCIConfig=None
 KernelVersion="4.18.0-477"
 LustreVersion="lustre-2.15.3"
 
-
 DefaultOSS = {
                 "shape": "BM.DenseIO.E5.128",
                 "nic": 0,
@@ -61,26 +60,14 @@ CLUSTER = {
             ,
             { 
                 "name": "storage-server-1"
+                # Rest of the details gets added from DefaultOSS
             }
             ,
             { 
                 "name": "storage-server-2"
-            },
-            { 
-                "name": "storage-server-3"
-            },
-            { 
-                "name": "storage-server-4"
+                # Rest of the details gets added from DefaultOSS
             }
             ,
-#            { 
-#                "name": "storage-server-3"
-#            }
-#            ,
-#            { 
-#                "name": "storage-server-4"
-#            }
-#            ,
             { 
                 "name": "client-1",
                 "shape": "VM.Standard2.24",
@@ -89,15 +76,6 @@ CLUSTER = {
                 "volumes": 0,
                 "bvSize": 100 
             }
-#            ,
-#            { 
-#                "name": "client-2",
-#                "shape": "VM.Standard2.24",
-#                "nic": 0,
-#                "vnics": 1,
-#                "volumes": 0,
-#                "bvSize": 100 
-#            }
         ]
         
 }
@@ -106,8 +84,18 @@ CLUSTER = {
 
 #SERVERS = ["storage-server-1" ]
 
-#for s in SERVERS:
-#    CLUSTER["nodes"].append( { "name": s })
+#for s in range(1,25):
+#    dd= {
+#            "name": "client-" + str(s),
+#            "shape": "VM.Standard2.24",
+#            "nic": 0,
+#            "vnics": 1,
+#            "volumes": 0,
+#            "bvSize": 100
+#            }
+#
+#    CLUSTER["nodes"].append( dd )
+
 
 logger=None
 
@@ -402,10 +390,10 @@ def attachVnic(instanceId, displayName,subnetId, nicIndex):
             )
 
     instanceClient = oci.core.ComputeClient(OCIConfig)
-    r=instanceClient.attach_vnic(attach_vnic_details=attachDetails)
     cc=0
     status=409
     while cc < 5 and status == 409:
+        r=instanceClient.attach_vnic(attach_vnic_details=attachDetails)
         if r and r.status/100 == 2:
             oci.wait_until(
                 instanceClient,
@@ -493,7 +481,15 @@ def updateTag(instanceId, tags):
         r.freeform_tags[k]=tags[k]
 
     details=oci.core.models.UpdateInstanceDetails(freeform_tags=r.freeform_tags)
-    instanceClient.update_instance(instance_id=instanceId, update_instance_details=details)
+    cc=0
+    status=409
+    while cc < 5 and status == 409:
+        r=instanceClient.update_instance(instance_id=instanceId, update_instance_details=details)
+        if r and r.status/100 == 2:
+            return True
+        status=r.status
+        cc+=1
+
 
 def setImaged(n):
     instanceClient = oci.core.ComputeClient(OCIConfig)
@@ -802,7 +798,6 @@ for cn in CLUSTER["nodes"]:
 
     getConfig()
 
-
     finished=False
     if CLUSTER["name"] in DeploymentConfig["clusters"] :
         for n in DeploymentConfig["clusters"][CLUSTER["name"]]["nodes"]:
@@ -819,7 +814,6 @@ for cn in CLUSTER["nodes"]:
         logCritical(f"Create instance {cn['name']} failed")
         continue
 
-#    print(DeploymentConfig)
     found=False
     failed=False
     for n in DeploymentConfig["clusters"][CLUSTER["name"]]["nodes"]:
@@ -850,3 +844,4 @@ for cn in CLUSTER["nodes"]:
 
     if failed:
         continue
+    print(DeploymentConfig)

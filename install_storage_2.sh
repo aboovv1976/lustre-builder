@@ -134,25 +134,25 @@ hostname
 echo $num
 
 
-disk_type=""
-drive_variables=""
-drive_letter=""
-dcount=0
-index=-1
-total_disk_count=`ls /dev/ | grep nvme | grep n1 | wc -l`
-for disk in `ls /dev/ | grep nvme | grep n1`; do
-  echo -e "\nProcessing /dev/$disk"
-  disk_type="nvme"
-  pvcreate -y  /dev/$disk
-  mount_device="/dev/$disk"
-  index=$((((((num-1))*total_disk_count))+(dcount)))
-  echo $index
-  dcount=$((dcount+1))
-  disk_mount $2
-done;
-
-echo "$dcount $disk_type disk found"
-
+#disk_type=""
+#drive_variables=""
+#drive_letter=""
+#dcount=0
+#index=-1
+#total_disk_count=`ls /dev/ | grep nvme | grep n1 | wc -l`
+#for disk in `ls /dev/ | grep nvme | grep n1`; do
+#  echo -e "\nProcessing /dev/$disk"
+#  disk_type="nvme"
+#  pvcreate -y  /dev/$disk
+#  mount_device="/dev/$disk"
+#  index=$((((((num-1))*total_disk_count))+(dcount)))
+#  echo $index
+#  dcount=$((dcount+1))
+#  disk_mount $2
+#done;
+#
+#echo "$dcount $disk_type disk found"
+#
 disk_type=""
 drive_variables=""
 drive_letter=""
@@ -172,8 +172,8 @@ for disk in `cat /proc/partitions | grep -ivw 'sda' | grep -ivw 'sda[1-3]' | gre
   disk_mount $2
 done;
 
-echo "$dcount $disk_type disk found"
-
+#echo "$dcount $disk_type disk found"
+#
 
 
 

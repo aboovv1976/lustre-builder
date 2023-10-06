@@ -88,8 +88,8 @@ function mount_lustrefs() {
     mounted_fs=`df -k | grep "^${mgs_ip}@tcp1:/$fsname "`
     if [ -z "$mounted_fs" ]
     then
-	    exit 0
 	    echo
+        echo "mount -t lustre ${mgs_ip}@tcp1:/$fsname $mount_point"
         mount -t lustre ${mgs_ip}@tcp1:/$fsname $mount_point || FAILED=1
     fi
 }
