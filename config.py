@@ -793,7 +793,7 @@ def configureLustre(n):
 
 #Main start here
 initOCI()
-runCmd("mv ~/.ssh/known_hosts ~/.ssh/known_hosts.old 2>/dev/null")
+runCmd("mv -f ~/.ssh/known_hosts ~/.ssh/known_hosts.old 2>/dev/null")
    
 for cn in CLUSTER["nodes"]:
     st=time.time()
